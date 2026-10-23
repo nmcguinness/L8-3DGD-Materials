@@ -1,0 +1,580 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Texel Path Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one long column of three stations along the texel's path (core -> caches -> VRAM), each pairing a diagram with controls */
+:root {
+  --bg: #eceff2;
+  --surface: #fbfcfd;
+  --sunk: #e1e6eb;
+  --ink: #16202a;
+  --muted: #586776;
+  --line: #c6d0da;
+  --accent: #b0552b;
+  --accent-soft: #f1ddd2;
+  --hit: #2c8556;
+  --l2: #b8860b;
+  --miss: #c03a3a;
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #19212a; --sunk: #222c37; --ink: #e3e9ef; --muted: #93a2b2;
+    --line: #2f3b48; --accent: #e27c48; --accent-soft: #3a2a22; --hit: #4cc286; --l2: #e0b443; --miss: #ef6767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19212a; --sunk: #222c37; --ink: #e3e9ef; --muted: #93a2b2;
+  --line: #2f3b48; --accent: #e27c48; --accent-soft: #3a2a22; --hit: #4cc286; --l2: #e0b443; --miss: #ef6767;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.wrap { max-width: 1060px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+header { display: flex; flex-direction: column; gap: 10px; max-width: 70ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 5vw, 46px); line-height: 1.05; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 26px; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--font-display); font-weight: 600; font-size: 17px; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--muted); font-size: 17px; }
+.path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.path span.stop { border: 1px solid var(--line); padding: 2px 8px; border-radius: 3px; background: var(--surface); color: var(--ink); }
+section.station { display: flex; flex-direction: column; gap: 18px; border-top: 2px solid var(--ink); padding-top: 18px; }
+.station-head { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.station-head .num { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.prose { max-width: 68ch; display: flex; flex-direction: column; gap: 10px; }
+.prose p { color: var(--ink); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.scroll-x { overflow-x: auto; }
+code, .mono { font-family: var(--font-mono); font-size: .92em; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* Architecture SVG */
+svg.arch { width: 100%; min-width: 600px; height: auto; display: block; }
+svg.arch .blk { cursor: pointer; }
+svg.arch .blk rect { fill: var(--sunk); stroke: var(--line); stroke-width: 1.2; transition: fill .15s; }
+svg.arch .blk:hover rect, svg.arch .blk:focus rect { fill: var(--accent-soft); }
+svg.arch .blk.sel rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+svg.arch .blk:focus { outline: none; }
+svg.arch text { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; pointer-events: none; }
+svg.arch text.lbl { font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+svg.arch .frame { fill: none; stroke: var(--muted); stroke-dasharray: 4 3; }
+svg.arch .bus { stroke: var(--muted); stroke-width: 2; fill: none; }
+svg.arch .bus.fat { stroke-width: 5; stroke: var(--accent); opacity: .5; }
+#archInfo h3 { color: var(--accent); }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+dl.facts dt { font-family: var(--font-mono); color: var(--muted); font-size: 12px; padding-top: 2px; }
+dl.facts dd { margin: 0; }
+
+.lat { display: flex; flex-direction: column; gap: 8px; }
+.lat-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 70px; gap: 10px; align-items: center; font-size: 13px; }
+.lat-row .bar { height: 14px; background: var(--accent); border-radius: 2px; }
+.lat-row .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+.lat-axis { display: grid; grid-template-columns: 112px minmax(0,1fr) 70px; gap: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.lat-axis .ticks { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 3px; }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; background: var(--surface); color: var(--ink); font: 500 13px var(--font-body); padding: 7px 12px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font: 600 13px var(--font-body); padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.ctl { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+select { font: 14px var(--font-body); padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); max-width: 100%; }
+input[type=range] { accent-color: var(--accent); width: 160px; max-width: 100%; }
+
+/* Layout explorer */
+.layout-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 700px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } }
+canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; touch-action: none; }
+.readout { font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; background: var(--sunk); padding: 10px 12px; border-radius: 3px; line-height: 1.7; min-height: 4.2em; }
+.readout b { color: var(--accent); font-weight: 500; }
+
+/* Simulator */
+.sim { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 760px) { .sim { grid-template-columns: minmax(0, 1fr); } }
+.canvas-cap { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.stat .k { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.stat .v { font-family: var(--font-display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat .v.hit { color: var(--hit); } .stat .v.l2 { color: var(--l2); } .stat .v.miss { color: var(--miss); }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; color: var(--ink); max-width: 72ch; }
+.takeaways { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.takeaways .panel p { font-size: 14px; }
+footer { color: var(--muted); font-size: 13px; max-width: 72ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">3D Game Development &#xB7; GPU memory</div>
+  <h1>Texel Path Explorer</h1>
+  <p class="lede">Follow one texture sample from a shader instruction to VRAM and back. Explore how the hardware is organised, how a 2D texture is laid out in 1D memory, and why some sampling patterns hit the cache while others miss.</p>
+  <div class="path" aria-label="Path of a texture fetch">
+    <span class="stop">Sample()</span>&#x2192;<span class="stop">TMU</span>&#x2192;<span class="stop">L1 / texture cache</span>&#x2192;<span class="stop">L2</span>&#x2192;<span class="stop">memory controller</span>&#x2192;<span class="stop">VRAM</span>
+  </div>
+</header>
+
+<!-- STATION 1 -->
+<section class="station" id="arch">
+  <div class="station-head"><span class="num">Part 1</span><h2>How a GPU is organised</h2></div>
+  <div class="prose">
+    <p>A GPU is many small cores, each with its own fast local storage, all sharing a large L2 cache and a wide connection to VRAM. Pixels are shaded in groups called <b>waves</b> (32 or 64 threads that run one instruction together). When a wave issues a texture sample, the request walks down the hierarchy until it finds the data.</p>
+    <p>Select a block to see what it does and roughly how big and fast it is.</p>
+  </div>
+  <div class="grid2">
+    <div class="panel scroll-x">
+      <svg class="arch" viewBox="0 0 640 400" role="group" aria-label="GPU architecture diagram">
+        <rect class="frame" x="8" y="8" width="624" height="270" rx="4"/>
+        <text x="20" y="28" class="lbl">GPU die</text>
+        <g id="cores"></g>
+        <g class="blk" data-k="l2" tabindex="0" role="button" aria-label="L2 cache"><rect x="24" y="202" width="592" height="30" rx="3"/><text x="320" y="221" text-anchor="middle" class="lbl">Shared L2 cache</text></g>
+        <g class="blk" data-k="mc" tabindex="0" role="button" aria-label="Memory controllers"><rect x="24" y="240" width="592" height="28" rx="3"/><text x="320" y="258" text-anchor="middle">Memory controllers (one per 32-bit or 64-bit channel)</text></g>
+        <g id="buses"></g>
+        <g id="vram"></g>
+        <text x="320" y="392" text-anchor="middle" class="muted" style="fill:var(--muted)">VRAM (GDDR6/7 or HBM) on the board, outside the die</text>
+      </svg>
+    </div>
+    <div class="panel" id="archInfo" aria-live="polite"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Approximate latency of one access, in GPU clock cycles</h3>
+    <p class="small muted">Log scale. Figures are order-of-magnitude and vary by vendor, generation and clock speed.</p>
+    <div class="lat" id="lat"></div>
+  </div>
+  <p class="note">An ALU instruction costs a few cycles. A trip to VRAM costs hundreds. The GPU hides that gap by switching to another wave while one waits, which only works if enough waves fit in the register file.</p>
+</section>
+
+<!-- STATION 2 -->
+<section class="station" id="layout">
+  <div class="station-head"><span class="num">Part 2</span><h2>How a texture is stored</h2></div>
+  <div class="prose">
+    <p>Memory is a 1D sequence of bytes, so every 2D texture has to be flattened. Memory also moves in fixed blocks called <b>cache lines</b>. Here each texel is 4 bytes (RGBA8) and a line is 64 bytes, so one line holds 16 texels. Whatever layout is used, a fetch of one texel brings its 15 line-mates into the cache too.</p>
+    <p>Colours show which texels share a line. The path traces address order. Hover or tap a texel to see its address.</p>
+  </div>
+  <div class="panel">
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Memory layout">
+        <button type="button" id="lay-linear" data-lay="linear" aria-pressed="true">Linear (row-major)</button>
+        <button type="button" id="lay-tiled" data-lay="tiled" aria-pressed="false">Tiled 4&#xD7;4</button>
+        <button type="button" id="lay-morton" data-lay="morton" aria-pressed="false">Morton (Z-order)</button>
+      </div>
+      <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showPath" checked> Show address path</label>
+    </div>
+    <div class="layout-grid">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="canvas-cap"><span>16 &#xD7; 16 texture</span><span>2D view</span></div>
+        <canvas id="layCanvas" width="320" height="320" aria-label="Texture grid coloured by cache line"></canvas>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div class="canvas-cap"><span>Same texels in address order</span><span>1D view: VRAM, 16 lines of 64 bytes</span></div>
+          <div class="scroll-x"><canvas id="stripCanvas" width="640" height="200" style="min-width:480px" aria-label="Memory in address order"></canvas></div>
+        </div>
+        <div class="readout" id="layRead">Hover a texel.</div>
+        <p class="small" id="layNote"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATION 3 -->
+<section class="station" id="sim">
+  <div class="station-head"><span class="num">Part 3</span><h2>How cache misses happen</h2></div>
+  <div class="prose">
+    <p>A 16 &#xD7; 16 block of screen pixels is shaded in Z-order, the way GPUs walk 2&#xD7;2 quads through a tile. Each pixel samples a 64 &#xD7; 64 texture. A sample hits if its line is already in L1, falls back to L2 if not, and goes to VRAM if neither has it. The caches use least-recently-used eviction.</p>
+    <p>Try each sampling pattern with both layouts, then shrink L1 to see capacity misses appear.</p>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <label class="ctl" for="mode">Sampling pattern
+        <select id="mode">
+          <option value="mag">Magnified, 1:1 texel per pixel</option>
+          <option value="rot">Rotated 90&#xB0; (walks down columns)</option>
+          <option value="minNo">Minified 4&#xD7;, no mipmaps</option>
+          <option value="minMip">Minified 4&#xD7;, mipmapped</option>
+          <option value="noise">Distorted UVs (noise offset)</option>
+          <option value="rand">Random UVs (dependent read)</option>
+        </select>
+      </label>
+      <label class="ctl">Layout
+        <span class="seg" role="group" aria-label="Simulator layout">
+          <button type="button" id="sl-linear" data-sl="linear" aria-pressed="false">Linear</button>
+          <button type="button" id="sl-tiled" data-sl="tiled" aria-pressed="true">Tiled</button>
+        </span>
+      </label>
+      <label class="ctl">Filter
+        <span class="seg" role="group" aria-label="Filter">
+          <button type="button" id="f-point" data-f="point" aria-pressed="false">Point &#xB7; 1 tap</button>
+          <button type="button" id="f-bil" data-f="bil" aria-pressed="true">Bilinear &#xB7; 4 taps</button>
+        </span>
+      </label>
+      <label class="ctl" for="l1">L1 size: <span id="l1v"></span>
+        <input type="range" id="l1" min="2" max="32" step="1" value="8">
+      </label>
+    </div>
+    <div class="controls">
+      <button type="button" class="btn" id="play">Play</button>
+      <button type="button" class="btn ghost" id="step">Step one pixel</button>
+      <button type="button" class="btn ghost" id="wave">Run one wave (32)</button>
+      <button type="button" class="btn ghost" id="all">Run to end</button>
+      <button type="button" class="btn ghost" id="reset">Reset</button>
+      <label class="ctl" for="speed">Speed
+        <input type="range" id="speed" min="1" max="20" value="6">
+      </label>
+    </div>
+
+    <div class="sim">
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <div class="canvas-cap"><span>Screen pixels (16 &#xD7; 16)</span><span id="waveCap">wave 1 of 8</span></div>
+        <canvas id="scr" width="384" height="384" aria-label="Screen pixels coloured by result"></canvas>
+        <div class="legend"><span><i style="background:var(--hit)"></i>All taps hit L1</span><span><i style="background:var(--l2)"></i>Worst tap from L2</span><span><i style="background:var(--miss)"></i>Worst tap from VRAM</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <div class="canvas-cap"><span id="texCap">Texture, mip 0 (64 &#xD7; 64)</span><span>outlined = resident lines</span></div>
+        <canvas id="tex" width="384" height="384" aria-label="Texture with cached lines highlighted"></canvas>
+        <div class="legend"><span><i style="border:2px solid var(--accent)"></i>In L1</span><span><i style="border:2px solid var(--l2)"></i>In L2 only</span><span><i style="background:var(--ink)"></i>Current taps</span></div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <label class="ctl" for="waves">Resident waves per core: <span id="wavesV"></span>
+        <input type="range" id="waves" min="1" max="16" value="8">
+      </label>
+      <p class="small muted" style="max-width:52ch">Estimated stall assumes the core switches to other waves while one waits. More resident waves hide more latency. High register use per thread lowers this number.</p>
+    </div>
+    <p class="note" id="simNote"></p>
+  </div>
+</section>
+
+<section class="station">
+  <div class="station-head"><span class="num">Summary</span><h2>What to take into your shaders</h2></div>
+  <div class="takeaways">
+    <div class="panel"><h3>Keep neighbours together</h3><p>Adjacent pixels should sample adjacent texels. Hardware tiling makes this work in any direction, but random or heavily distorted UVs defeat it.</p></div>
+    <div class="panel"><h3>Always mipmap minified textures</h3><p>Without mips, a far-away surface skips across the texture and touches a new line for nearly every pixel. Mips keep the footprint close to 1:1.</p></div>
+    <div class="panel"><h3>Smaller texels, more hits</h3><p>Compressed formats (BC1 to BC7) pack more texels into each 64-byte line, so every fetch brings in more useful data.</p></div>
+    <div class="panel"><h3>Leave room to hide latency</h3><p>Misses are only slow if there is nothing else to run. Fewer registers per thread means more waves resident, and more waves to switch to.</p></div>
+  </div>
+</section>
+
+<footer>Latencies, cache sizes and line sizes are illustrative values chosen to make the behaviour visible. Real GPUs use larger caches, set-associative placement, vendor-specific tiling, and texture compression, but the mechanisms are the same.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const redrawers = [];
+  const redrawAll = () => redrawers.forEach((f) => f());
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redrawAll); } catch (e) {}
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  /* ---------- Part 1: architecture ---------- */
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const cores = document.getElementById("cores");
+  const coreW = 140, coreGap = 10, x0 = 24;
+  for (let i = 0; i < 4; i++) {
+    const x = x0 + i * (coreW + coreGap);
+    mk("rect", { x, y: 40, width: coreW, height: 152, rx: 3, class: "frame" }, cores);
+    const t = mk("text", { x: x + 8, y: 56, class: "lbl" }, cores); t.textContent = "Shader core " + (i + 1);
+    const items = [["alu", "ALU lanes \u00d732", 64], ["reg", "Register file", 96], ["l1", "L1 / texture cache", 128], ["tmu", "Texture unit (TMU)", 160]];
+    items.forEach(([k, label, y]) => {
+      const g = mk("g", { class: "blk", "data-k": k, tabindex: 0, role: "button", "aria-label": label }, cores);
+      mk("rect", { x: x + 8, y, width: coreW - 16, height: 26, rx: 2 }, g);
+      const tx = mk("text", { x: x + coreW / 2, y: y + 17, "text-anchor": "middle" }, g); tx.textContent = label;
+    });
+  }
+  const buses = document.getElementById("buses");
+  for (let i = 0; i < 6; i++) {
+    const x = 60 + i * 104;
+    mk("path", { d: `M${x} 268 L${x} 318`, class: "bus fat" }, buses);
+  }
+  const vram = document.getElementById("vram");
+  for (let i = 0; i < 6; i++) {
+    const x = 24 + i * 100;
+    const g = mk("g", { class: "blk", "data-k": "vram", tabindex: 0, role: "button", "aria-label": "VRAM chip" }, vram);
+    mk("rect", { x: x + 4, y: 318, width: 88, height: 50, rx: 3 }, g);
+    const t = mk("text", { x: x + 48, y: 347, "text-anchor": "middle" }, g); t.textContent = "VRAM " + (i + 1);
+  }
+  const INFO = {
+    alu: { t: "ALU lanes", d: "Arithmetic units that execute one instruction across a whole wave at once. Every lane runs the same instruction on its own pixel or vertex.", f: [["Per core", "32 to 128 lanes"], ["Latency", "about 4 cycles per instruction"], ["Cost driver", "Instruction count, divergence"]] },
+    reg: { t: "Register file", d: "Holds the live variables for every resident wave. It is the fastest storage on the chip, but it is shared: the more registers each thread needs, the fewer waves fit, and the less latency the core can hide.", f: [["Per core", "about 256 KiB"], ["Latency", "about 1 cycle"], ["Cost driver", "Registers per thread lowers occupancy"]] },
+    l1: { t: "L1 / texture cache", d: "Small cache private to one core. Recently fetched cache lines live here so neighbouring pixels in the same and nearby waves can reuse them.", f: [["Per core", "16 to 128 KiB"], ["Line size", "64 to 128 bytes"], ["Latency", "about 20 to 40 cycles"]] },
+    tmu: { t: "Texture unit (TMU)", d: "Turns a UV coordinate into texel addresses: picks the mip level, works out the 1 to 8 texels needed for filtering, requests them from L1, and blends the result.", f: [["Work per sample", "LOD, address, filter"], ["Bilinear", "4 texels"], ["Trilinear", "8 texels (two mips)"]] },
+    l2: { t: "Shared L2 cache", d: "One large cache shared by every core. A line one core brought in can serve another core. A miss here is a trip off the chip.", f: [["Size", "4 to 100+ MiB"], ["Latency", "about 150 to 300 cycles"], ["Shared by", "All cores"]] },
+    mc: { t: "Memory controllers", d: "Each controller drives one channel to VRAM. Addresses are interleaved across channels so a burst of requests spreads out and uses the full bus width.", f: [["Bus width", "128 to 512 bits total"], ["Job", "Queue, reorder, batch requests"]] },
+    vram: { t: "VRAM", d: "The large off-chip memory holding textures, buffers and render targets. Bandwidth is very high but latency is long, and every miss must move a whole line.", f: [["Size", "8 to 32 GiB"], ["Bandwidth", "400 to 1800 GB/s"], ["Latency", "about 400 to 800 cycles"]] }
+  };
+  const info = document.getElementById("archInfo");
+  function showInfo(k) {
+    const v = INFO[k];
+    document.querySelectorAll("svg.arch .blk").forEach((b) => b.classList.toggle("sel", b.dataset.k === k));
+    info.innerHTML = `<h3>${v.t}</h3><p>${v.d}</p><dl class="facts">${v.f.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>`;
+  }
+  document.querySelectorAll("svg.arch .blk").forEach((b) => {
+    b.addEventListener("click", () => showInfo(b.dataset.k));
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showInfo(b.dataset.k); } });
+  });
+  showInfo("l1");
+
+  const LAT = [["Register", 1], ["ALU op", 4], ["L1 hit", 30], ["L2 hit", 200], ["VRAM", 500]];
+  const latEl = document.getElementById("lat");
+  const maxLog = Math.log10(1000);
+  latEl.innerHTML = LAT.map(([n, v]) => `<div class="lat-row"><span>${n}</span><div class="bar" style="width:${Math.max(2, (Math.log10(v) / maxLog) * 100)}%"></div><span class="val">~${v}</span></div>`).join("") +
+    `<div class="lat-axis"><span></span><div class="ticks"><span>1</span><span>10</span><span>100</span><span>1000</span></div><span></span></div>`;
+
+  /* ---------- shared address helpers ---------- */
+  const part1by1 = (n) => { n &= 0xffff; n = (n | (n << 8)) & 0x00ff00ff; n = (n | (n << 4)) & 0x0f0f0f0f; n = (n | (n << 2)) & 0x33333333; n = (n | (n << 1)) & 0x55555555; return n; };
+  const morton = (x, y) => part1by1(x) | (part1by1(y) << 1);
+  function texelIndex(x, y, W, layout) {
+    if (layout === "linear") return y * W + x;
+    if (layout === "tiled") { const tilesX = W >> 2; return (((y >> 2) * tilesX + (x >> 2)) << 4) + ((y & 3) << 2) + (x & 3); }
+    return morton(x, y);
+  }
+  const lineHue = (line) => (line * 137.508) % 360;
+
+  /* ---------- Part 2: layout explorer ---------- */
+  const LW = 16;
+  let lay = "linear", hover = null;
+  const layC = document.getElementById("layCanvas"), lctx = layC.getContext("2d");
+  const strip = document.getElementById("stripCanvas"), sctx = strip.getContext("2d");
+  const layRead = document.getElementById("layRead"), layNote = document.getElementById("layNote");
+  const showPath = document.getElementById("showPath");
+  const NOTES = {
+    linear: "Linear: each line is one row of 16 texels. Walking across a row stays in one line; walking down a column needs a new line for every texel.",
+    tiled: "Tiled 4\u00d74: each line is a small square. Moving in any direction stays inside the same line for up to 4 texels, so vertical and diagonal access cost the same as horizontal.",
+    morton: "Morton (Z-order) interleaves the bits of x and y. Any aligned square of texels is contiguous in memory, at every scale. GPUs use variations of this."
+  };
+  function drawLayout() {
+    const s = layC.width / LW;
+    const dark = isDark();
+    lctx.clearRect(0, 0, layC.width, layC.height);
+    const pos = new Array(LW * LW);
+    for (let y = 0; y < LW; y++) for (let x = 0; x < LW; x++) {
+      const idx = texelIndex(x, y, LW, lay), line = idx >> 4;
+      pos[idx] = [x, y];
+      lctx.fillStyle = `hsl(${lineHue(line)} ${dark ? 45 : 55}% ${dark ? 38 : 72}%)`;
+      lctx.fillRect(x * s, y * s, s, s);
+    }
+    lctx.strokeStyle = css("--surface"); lctx.lineWidth = 1;
+    for (let i = 0; i <= LW; i++) { lctx.beginPath(); lctx.moveTo(i * s, 0); lctx.lineTo(i * s, layC.height); lctx.stroke(); lctx.beginPath(); lctx.moveTo(0, i * s); lctx.lineTo(layC.width, i * s); lctx.stroke(); }
+    if (showPath.checked) {
+      lctx.strokeStyle = css("--ink"); lctx.globalAlpha = .55; lctx.lineWidth = 1.5;
+      lctx.beginPath();
+      pos.forEach(([x, y], i) => { const px = x * s + s / 2, py = y * s + s / 2; i ? lctx.lineTo(px, py) : lctx.moveTo(px, py); });
+      lctx.stroke(); lctx.globalAlpha = 1;
+    }
+    let hLine = -1;
+    if (hover) {
+      const idx = texelIndex(hover[0], hover[1], LW, lay); hLine = idx >> 4;
+      lctx.strokeStyle = css("--accent"); lctx.lineWidth = 2.5;
+      for (let y = 0; y < LW; y++) for (let x = 0; x < LW; x++) if ((texelIndex(x, y, LW, lay) >> 4) === hLine) lctx.strokeRect(x * s + 1.5, y * s + 1.5, s - 3, s - 3);
+      lctx.fillStyle = css("--ink"); lctx.fillRect(hover[0] * s + s / 3, hover[1] * s + s / 3, s / 3, s / 3);
+      layRead.innerHTML = `texel (x=${hover[0]}, y=${hover[1]})<br>index <b>${idx}</b> \u00b7 byte address <b>0x${(idx * 4).toString(16).padStart(4, "0")}</b><br>cache line <b>${hLine}</b> \u00b7 bytes ${hLine * 64}\u2013${hLine * 64 + 63}`;
+    } else layRead.textContent = "Hover or tap a texel.";
+    // strip: 16 lines as rows of 16 cells
+    const cw = strip.width / 16, ch = (strip.height - 8) / 16;
+    sctx.clearRect(0, 0, strip.width, strip.height);
+    sctx.font = `10px ${css("--font-mono")}`;
+    for (let i = 0; i < LW * LW; i++) {
+      const line = i >> 4, col = i & 15;
+      sctx.fillStyle = `hsl(${lineHue(line)} ${dark ? 45 : 55}% ${dark ? 38 : 72}%)`;
+      sctx.fillRect(col * cw + 0.5, line * ch + 0.5, cw - 1, ch - 1);
+      if (line === hLine) { sctx.strokeStyle = css("--accent"); sctx.lineWidth = 2; sctx.strokeRect(col * cw + 1.5, line * ch + 1.5, cw - 3, ch - 3); }
+      if (hover && i === texelIndex(hover[0], hover[1], LW, lay)) { sctx.fillStyle = css("--ink"); sctx.fillRect(col * cw + cw / 3, line * ch + ch / 4, cw / 3, ch / 2); }
+    }
+    layNote.textContent = NOTES[lay];
+  }
+  function layHover(e) {
+    const r = layC.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / r.width * LW), y = Math.floor((e.clientY - r.top) / r.height * LW);
+    hover = (x >= 0 && x < LW && y >= 0 && y < LW) ? [x, y] : null; drawLayout();
+  }
+  layC.addEventListener("pointermove", layHover); layC.addEventListener("pointerdown", layHover);
+  layC.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hover = null; drawLayout(); } });
+  showPath.addEventListener("change", drawLayout);
+  document.querySelectorAll("[data-lay]").forEach((b) => b.addEventListener("click", () => {
+    lay = b.dataset.lay; document.querySelectorAll("[data-lay]").forEach((o) => o.setAttribute("aria-pressed", String(o === b))); drawLayout();
+  }));
+  function isDark() { const t = document.documentElement.getAttribute("data-theme"); if (t) return t === "dark"; try { return matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { return false; } }
+  redrawers.push(drawLayout);
+  drawLayout();
+
+  /* ---------- Part 3: cache simulator ---------- */
+  const TW = 64, SW = 16, L2_LINES = 48;
+  const LAT_L1 = 30, LAT_L2 = 200, LAT_VRAM = 500;
+  const MIPS = [{ w: 64, base: 0 }, { w: 32, base: 4096 }, { w: 16, base: 5120 }];
+  const st = { mode: "mag", layout: "tiled", filter: "bil", l1Size: 8, waves: 8 };
+  const order = [];
+  for (let y = 0; y < SW; y++) for (let x = 0; x < SW; x++) order.push([x, y]);
+  order.sort((a, b) => morton(a[0], a[1]) - morton(b[0], b[1]));
+
+  const hash = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return (h ^ (h >>> 16)) >>> 0; };
+  function sampleCoord(px, py) {
+    switch (st.mode) {
+      case "mag": return { mip: 0, x: px + 24, y: py + 24 };
+      case "rot": return { mip: 0, x: 24 + py, y: 24 + (SW - 1 - px) };
+      case "minNo": return { mip: 0, x: px * 4, y: py * 4 };
+      case "minMip": return { mip: 2, x: px, y: py };
+      case "noise": { const ox = Math.round(Math.sin(py * 0.9 + px * 0.3) * 6), oy = Math.round(Math.cos(px * 0.8 - py * 0.4) * 6); return { mip: 0, x: px + 24 + ox, y: py + 24 + oy }; }
+      case "rand": { const h = hash(px, py, 7); return { mip: 0, x: h % TW, y: (h >>> 8) % TW }; }
+    }
+  }
+  const wrap = (v, w) => ((v % w) + w) % w;
+  function lineOf(mip, x, y) { const m = MIPS[mip]; return (m.base + texelIndex(wrap(x, m.w), wrap(y, m.w), m.w, st.layout)) >> 4; }
+
+  let sim;
+  function resetSim() {
+    sim = { i: 0, l1: [], l2: [], res: new Array(SW * SW).fill(0), taps: 0, h1: 0, h2: 0, hv: 0, lat: 0, cur: [] };
+    drawSim(); updateStats();
+  }
+  function touch(cache, line, cap) {
+    const k = cache.indexOf(line);
+    if (k >= 0) { cache.splice(k, 1); cache.push(line); return true; }
+    cache.push(line); if (cache.length > cap) cache.shift(); return false;
+  }
+  function stepOne() {
+    if (sim.i >= order.length) return false;
+    const [px, py] = order[sim.i];
+    const c = sampleCoord(px, py);
+    const taps = st.filter === "bil" ? [[0, 0], [1, 0], [0, 1], [1, 1]] : [[0, 0]];
+    let worst = 1; sim.cur = [];
+    taps.forEach(([dx, dy]) => {
+      const tx = c.x + dx, ty = c.y + dy, line = lineOf(c.mip, tx, ty);
+      sim.cur.push({ mip: c.mip, x: wrap(tx, MIPS[c.mip].w), y: wrap(ty, MIPS[c.mip].w) });
+      sim.taps++;
+      if (touch(sim.l1, line, st.l1Size)) { sim.h1++; sim.lat += LAT_L1; }
+      else if (touch(sim.l2, line, L2_LINES)) { sim.h2++; sim.lat += LAT_L2; worst = Math.max(worst, 2); }
+      else { sim.hv++; sim.lat += LAT_VRAM; worst = 3; }
+    });
+    sim.res[py * SW + px] = worst; sim.curMip = c.mip; sim.i++;
+    return true;
+  }
+  function drawSim() {
+    const scr = document.getElementById("scr"), c = scr.getContext("2d");
+    const s = scr.width / SW;
+    const cols = { 1: css("--hit"), 2: css("--l2"), 3: css("--miss") };
+    c.fillStyle = css("--sunk"); c.fillRect(0, 0, scr.width, scr.height);
+    for (let y = 0; y < SW; y++) for (let x = 0; x < SW; x++) {
+      const r = sim.res[y * SW + x];
+      if (r) { c.fillStyle = cols[r]; c.fillRect(x * s + 1, y * s + 1, s - 2, s - 2); }
+      else { c.strokeStyle = css("--line"); c.strokeRect(x * s + .5, y * s + .5, s - 1, s - 1); }
+    }
+    // wave boundary: current wave pixels
+    const wv = Math.min(7, Math.floor(Math.max(0, sim.i - 1) / 32));
+    c.strokeStyle = css("--ink"); c.lineWidth = 2;
+    const wp = order.slice(wv * 32, wv * 32 + 32);
+    const xs = wp.map((p) => p[0]), ys = wp.map((p) => p[1]);
+    c.strokeRect(Math.min(...xs) * s + 1, Math.min(...ys) * s + 1, (Math.max(...xs) - Math.min(...xs) + 1) * s - 2, (Math.max(...ys) - Math.min(...ys) + 1) * s - 2);
+    if (sim.i > 0 && sim.i <= order.length) { const [lx, ly] = order[sim.i - 1]; c.fillStyle = css("--ink"); c.fillRect(lx * s + s / 3, ly * s + s / 3, s / 3, s / 3); }
+    c.lineWidth = 1;
+    document.getElementById("waveCap").textContent = `wave ${wv + 1} of 8 outlined \u00b7 pixel ${sim.i} of 256`;
+
+    // texture view
+    const tex = document.getElementById("tex"), t = tex.getContext("2d");
+    const mip = st.mode === "minMip" ? 2 : 0, m = MIPS[mip], ts = tex.width / m.w;
+    document.getElementById("texCap").textContent = mip ? "Texture, mip 2 (16 \u00d7 16)" : "Texture, mip 0 (64 \u00d7 64)";
+    const dark = isDark();
+    const l1set = new Set(sim.l1), l2set = new Set(sim.l2);
+    for (let y = 0; y < m.w; y++) for (let x = 0; x < m.w; x++) {
+      const u = x / m.w, v = y / m.w;
+      const chk = ((Math.floor(u * 8) + Math.floor(v * 8)) & 1);
+      t.fillStyle = `hsl(${200 + u * 120} ${dark ? 30 : 40}% ${(dark ? 22 : 82) + chk * (dark ? 6 : -6)}%)`;
+      t.fillRect(x * ts, y * ts, ts, ts);
+    }
+    const drawSet = (set, color) => {
+      t.fillStyle = color;
+      for (let y = 0; y < m.w; y++) for (let x = 0; x < m.w; x++) {
+        const line = (m.base + texelIndex(x, y, m.w, st.layout)) >> 4;
+        if (set.has(line)) { t.globalAlpha = .5; t.fillRect(x * ts, y * ts, ts, ts); t.globalAlpha = 1; }
+      }
+    };
+    drawSet(new Set([...l2set].filter((l) => !l1set.has(l))), css("--l2"));
+    drawSet(l1set, css("--accent"));
+    if (sim.curMip === mip) { t.fillStyle = css("--ink"); sim.cur.forEach((p) => t.fillRect(p.x * ts, p.y * ts, ts, ts)); }
+  }
+  function fmt(n) { return n.toLocaleString("en-GB"); }
+  function updateStats() {
+    const rate = sim.taps ? Math.round((sim.h1 / sim.taps) * 100) : 0;
+    const stall = Math.round(sim.lat / st.waves);
+    document.getElementById("stats").innerHTML = [
+      ["Texel fetches", fmt(sim.taps), ""], ["L1 hit rate", rate + "%", "hit"],
+      ["L2 hits", fmt(sim.h2), "l2"], ["VRAM fetches", fmt(sim.hv), "miss"],
+      ["Bytes from VRAM", fmt(sim.hv * 64), ""], ["Avg latency / fetch", sim.taps ? Math.round(sim.lat / sim.taps) + " cyc" : "\u2013", ""],
+      ["Total latency", fmt(sim.lat) + " cyc", ""], ["Est. exposed stall", fmt(stall) + " cyc", ""]
+    ].map(([k, v, c]) => `<div class="stat"><span class="k">${k}</span><span class="v ${c}">${v}</span></div>`).join("");
+    document.getElementById("simNote").textContent = SIMNOTES[st.mode](st.layout);
+  }
+  const SIMNOTES = {
+    mag: (l) => "Each pixel moves one texel from its neighbour, so most taps land in a line already fetched for a nearby pixel. Expect the best hit rate here." + (l === "linear" ? " With a linear layout, Z-order shading still jumps between rows, so a small L1 starts to evict lines before they are reused." : ""),
+    rot: (l) => l === "linear" ? "With a linear layout, walking down a column needs a new 16-texel row line for every pixel. Shrink L1 and watch the hit rate fall. Switch to Tiled to see it recover." : "Tiled layout makes vertical access as cheap as horizontal. This is why GPUs store textures tiled: you cannot predict which way a surface will be oriented on screen.",
+    minNo: () => "Each pixel jumps 4 texels, so it lands in a different line from its neighbour. Almost every fetch is a miss, and most of every 64-byte line is fetched and never used. This also causes shimmering.",
+    minMip: () => "The hardware picks the 16 \u00d7 16 mip, where one pixel maps to about one texel again. Fewer, closer fetches give a high hit rate and a tiny VRAM footprint.",
+    noise: () => "A small UV distortion (like heat haze or water) keeps most samples near each other, so the cost rises but stays moderate. Larger offsets push it towards the random case.",
+    rand: () => "Random UVs, such as a hash or a dependent read from a lookup texture, destroy locality. Nearly every fetch goes to VRAM, and only enough resident waves can hide the stall."
+  };
+
+  let timer = null;
+  function tick() {
+    const n = +document.getElementById("speed").value;
+    let ran = false;
+    for (let k = 0; k < Math.ceil(n / 4); k++) ran = stepOne() || ran;
+    drawSim(); updateStats();
+    if (!ran || sim.i >= order.length) stop();
+  }
+  function stop() { clearInterval(timer); timer = null; document.getElementById("play").textContent = sim.i >= order.length ? "Replay" : "Play"; }
+  document.getElementById("play").addEventListener("click", () => {
+    if (timer) return stop();
+    if (sim.i >= order.length) resetSim();
+    const n = +document.getElementById("speed").value;
+    timer = setInterval(tick, Math.max(16, 220 - n * 10));
+    document.getElementById("play").textContent = "Pause";
+  });
+  document.getElementById("step").addEventListener("click", () => { stop(); stepOne(); drawSim(); updateStats(); });
+  document.getElementById("wave").addEventListener("click", () => { stop(); for (let k = 0; k < 32; k++) if (!stepOne()) break; drawSim(); updateStats(); });
+  document.getElementById("all").addEventListener("click", () => { stop(); while (stepOne()); drawSim(); updateStats(); stop(); });
+  document.getElementById("reset").addEventListener("click", () => { stop(); resetSim(); document.getElementById("play").textContent = "Play"; });
+  document.getElementById("mode").addEventListener("change", (e) => { st.mode = e.target.value; stop(); resetSim(); });
+  const segBind = (attr, key) => document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.addEventListener("click", () => {
+    st[key] = b.dataset[attr]; document.querySelectorAll(`[data-${attr}]`).forEach((o) => o.setAttribute("aria-pressed", String(o === b))); stop(); resetSim();
+  }));
+  segBind("sl", "layout"); segBind("f", "filter");
+  const l1 = document.getElementById("l1"), l1v = document.getElementById("l1v");
+  const setL1 = () => { st.l1Size = +l1.value; l1v.textContent = `${st.l1Size} lines (${st.l1Size * 64} B)`; };
+  l1.addEventListener("input", () => { setL1(); stop(); resetSim(); });
+  const wv = document.getElementById("waves"), wvv = document.getElementById("wavesV");
+  const setW = () => { st.waves = +wv.value; wvv.textContent = st.waves; };
+  wv.addEventListener("input", () => { setW(); updateStats(); });
+  setL1(); setW(); resetSim();
+  // open in a useful state: first two waves already run
+  for (let k = 0; k < 64; k++) stepOne(); drawSim(); updateStats();
+  redrawers.push(drawSim);
+})();
+</script>
+
+</body></html>

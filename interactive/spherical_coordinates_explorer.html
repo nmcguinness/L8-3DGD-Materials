@@ -1,0 +1,564 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Spherical Coordinates Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Familjen+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column of three numbered stations; each pairs a live canvas with a readout panel, stacking on phones. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ee; --fg:#18202c; --muted:#596476; --line:#cfd6df;
+  --theta:#c2530a; --phi:#a3249c; --ax-x:#d03a3a; --ax-y:#2a8f3b; --ax-z:#2c68d4;
+  --heat-lo:#e4eaf1; --heat-mid:#f0a04b; --heat-hi:#a8202a; --code-bg:#f6f8fa;
+  --f-display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --surface:#191f28; --sunk:#0d1116; --fg:#e6eaf0; --muted:#97a2b2; --line:#2a333f;
+  --theta:#fb923c; --phi:#e57be0; --ax-x:#f06464; --ax-y:#52c463; --ax-z:#5f97f2;
+  --heat-lo:#1d2530; --heat-mid:#d98a2e; --heat-hi:#ff5c63; --code-bg:#0f141a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --surface:#191f28; --sunk:#0d1116; --fg:#e6eaf0; --muted:#97a2b2; --line:#2a333f;
+  --theta:#fb923c; --phi:#e57be0; --ax-x:#f06464; --ax-y:#52c463; --ax-z:#5f97f2;
+  --heat-lo:#1d2530; --heat-mid:#d98a2e; --heat-hi:#ff5c63; --code-bg:#0f141a; color-scheme:dark}
+
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(2rem,5vw,3.1rem);font-weight:700;letter-spacing:-0.02em}
+h2{font-size:1.65rem;font-weight:600;letter-spacing:-0.01em}
+h3{font-size:1.05rem;font-weight:600}
+p{margin:0;max-width:68ch}
+code,.mono{font-family:var(--f-mono);font-size:0.88em}
+.eyebrow{font-family:var(--f-mono);font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.th{color:var(--theta);font-weight:700}
+.ph{color:var(--phi);font-weight:700}
+.ax-x{color:var(--ax-x);font-weight:700}.ax-y{color:var(--ax-y);font-weight:700}.ax-z{color:var(--ax-z);font-weight:700}
+
+header{display:grid;gap:14px;padding-bottom:24px;border-bottom:1px solid var(--line)}
+.lede{font-size:1.1rem;color:var(--muted)}
+
+.conv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+.conv>div{background:var(--surface);padding:12px 14px;display:grid;gap:4px}
+.conv b{font-family:var(--f-mono);font-weight:500;font-size:0.95rem}
+.conv span{color:var(--muted);font-size:0.9rem}
+
+section.station{padding-block:40px 8px;display:grid;gap:18px}
+.station-head{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:baseline}
+.num{font-family:var(--f-display);font-weight:700;font-size:2.4rem;line-height:1;color:var(--line);grid-row:span 2}
+.station-head p{color:var(--muted);grid-column:2}
+
+.split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:840px){.split{grid-template-columns:minmax(0,1fr)}}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:8px;min-width:0}
+canvas{display:block;width:100%;height:auto;touch-action:none;border-radius:4px}
+canvas:focus-visible{outline:2px solid var(--ax-z);outline-offset:2px}
+.hint{font-size:0.82rem;color:var(--muted)}
+.panel{display:grid;gap:16px;min-width:0}
+
+.ctrl{display:grid;grid-template-columns:5.2rem minmax(0,1fr) 4.4rem;align-items:center;gap:10px}
+.ctrl label{font-family:var(--f-mono);font-size:0.9rem}
+.ctrl output{font-family:var(--f-mono);font-size:0.9rem;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--fg)}
+#s-th{accent-color:var(--theta)} #s-ph{accent-color:var(--phi)}
+
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,.seg label{font:inherit;font-size:0.85rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:4px;padding:5px 10px;cursor:pointer}
+button:hover,.seg label:hover{border-color:var(--muted)}
+button:focus-visible,.seg input:focus-visible+label{outline:2px solid var(--ax-z);outline-offset:1px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{border-radius:0;margin-left:-1px}
+.seg label:first-of-type{border-radius:4px 0 0 4px;margin-left:0}
+.seg label:last-of-type{border-radius:0 4px 4px 0}
+.seg input:checked+label{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+
+.readout{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px;font-variant-numeric:tabular-nums}
+.readout .line{font-family:var(--f-mono);font-size:0.86rem;overflow-x:auto;white-space:nowrap}
+.readout .k{color:var(--muted)}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big>div{background:var(--sunk);border-radius:6px;padding:8px 10px}
+.big .v{font-family:var(--f-mono);font-size:0.95rem;font-variant-numeric:tabular-nums}
+
+.note{border-left:3px solid var(--line);padding:4px 0 4px 14px;color:var(--muted);font-size:0.95rem}
+.note strong{color:var(--fg)}
+
+pre{margin:0;background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:12px 14px;overflow-x:auto;font-family:var(--f-mono);font-size:0.82rem;line-height:1.55}
+.codebox{display:grid;gap:6px;min-width:0}
+.codehead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cm{color:var(--muted)}
+
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:0.9rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-family:var(--f-mono);font-weight:500;font-size:0.75rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted)}
+tbody tr{cursor:pointer}
+tbody tr.on{background:var(--sunk)}
+tbody tr.on td:first-child{box-shadow:inset 3px 0 0 var(--fg)}
+.ok{color:var(--ax-y)} .bad{color:var(--ax-x)}
+
+.legend{display:grid;gap:4px}
+.legend .bar{height:10px;border-radius:3px;background:linear-gradient(90deg,var(--heat-lo),var(--heat-mid),var(--heat-hi))}
+.legend .ticks{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:0.75rem;color:var(--muted)}
+.swatch{display:inline-block;width:1.1em;height:1.1em;border-radius:3px;vertical-align:-0.2em;border:1px solid var(--line);margin-right:6px}
+
+.twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px}
+ul.pit{margin:0;padding-left:1.1rem;display:grid;gap:8px;max-width:72ch}
+details{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px}
+details+details{margin-top:8px}
+summary{cursor:pointer;font-weight:700}
+details p{margin-top:8px;color:var(--muted)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:0.85rem}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">COMP I8015 3D Game Development &middot; Materials and HLSL</div>
+  <h1>Spherical Coordinates Explorer</h1>
+  <p class="lede">A direction in 3D needs three numbers in Cartesian form but only two angles in spherical form. Those two angles are what let us wrap a flat texture around a sphere and squeeze a normal into two texture channels.</p>
+  <div class="conv" aria-label="Conventions used on this page">
+    <div><b>Z-up, Unreal axes</b><span><span class="ax-x">X</span> forward, <span class="ax-y">Y</span> right, <span class="ax-z">Z</span> up. Toggle handedness in station 1.</span></div>
+    <div><b><span class="th">&theta;</span> polar, 0&deg; to 180&deg;</b><span>Angle down from +Z. 0&deg; is the north pole, 90&deg; the equator.</span></div>
+    <div><b><span class="ph">&phi;</span> azimuth, 0&deg; to 360&deg;</b><span>Angle around Z, from +X towards +Y.</span></div>
+    <div><b>r radius, r &ge; 0</b><span>Distance from the origin. Directions and normals use r = 1.</span></div>
+  </div>
+</header>
+
+<!-- ===================== 1 ===================== -->
+<section class="station" id="coords">
+  <div class="station-head"><span class="num">1</span><h2>From angles to a point</h2>
+    <p>Move the sliders and watch where P lands. Drag the scene to orbit it. The readout shows each conversion with the current numbers substituted.</p></div>
+  <div class="split">
+    <div class="stage">
+      <canvas id="cv-scene" tabindex="0" aria-label="3D view of point P with its spherical angles. Drag or use arrow keys to orbit." style="aspect-ratio:1/0.9"></canvas>
+      <div class="row" style="justify-content:space-between">
+        <span class="hint">Drag or arrow keys to orbit</span>
+        <div class="seg" role="radiogroup" aria-label="Handedness">
+          <input type="radio" name="hand" id="h-lh" value="lh" checked><label for="h-lh">Left-handed (Unreal)</label>
+          <input type="radio" name="hand" id="h-rh" value="rh"><label for="h-rh">Right-handed (maths)</label>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="readout" style="gap:10px">
+        <div class="ctrl"><label for="s-r">r</label><input type="range" id="s-r" min="0.2" max="1.5" step="0.01" value="1"><output id="o-r">1.00</output></div>
+        <div class="ctrl"><label for="s-th" class="th">&theta; polar</label><input type="range" id="s-th" min="0" max="180" step="0.5" value="55"><output id="o-th">55.0&deg;</output></div>
+        <div class="ctrl"><label for="s-ph" class="ph">&phi; azimuth</label><input type="range" id="s-ph" min="0" max="360" step="0.5" value="40"><output id="o-ph">40.0&deg;</output></div>
+        <div class="row" aria-label="Preset directions">
+          <span class="hint" style="margin-right:4px">Presets</span>
+          <button data-p="1,90,0">+X</button><button data-p="1,90,90">+Y</button><button data-p="1,0,0">+Z</button>
+          <button data-p="1,180,0">&minus;Z</button><button data-p="1,90,180">&minus;X</button><button data-p="1,54.7356,45">(1,1,1)</button>
+        </div>
+      </div>
+      <div class="big">
+        <div><div class="eyebrow">Spherical</div><div class="v" id="r-sph"></div></div>
+        <div><div class="eyebrow">Cartesian</div><div class="v" id="r-cart"></div></div>
+      </div>
+      <div class="readout">
+        <div class="eyebrow">Spherical to Cartesian</div>
+        <div class="line" id="f-x"></div><div class="line" id="f-y"></div><div class="line" id="f-z"></div>
+        <div class="eyebrow" style="margin-top:6px">Cartesian to spherical</div>
+        <div class="line" id="f-r"></div><div class="line" id="f-t"></div><div class="line" id="f-p"></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><strong>Why r sin&theta;?</strong> Drop P straight down onto the XY plane. Its shadow sits at distance r&thinsp;sin&theta; from the origin, and <span class="ph">&phi;</span> spins that shadow around Z exactly like 2D polar coordinates. Height above the plane is r&thinsp;cos&theta;.</p>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section class="station" id="uv">
+  <div class="station-head"><span class="num">2</span><h2>Lat-long UV mapping</h2>
+    <p>Divide each angle by its range and you have a UV coordinate: u = &phi;&nbsp;/&nbsp;360&deg;, v = &theta;&nbsp;/&nbsp;180&deg;. Click either view to move P; drag the globe to turn it.</p></div>
+  <div class="split">
+    <div class="stage">
+      <canvas id="cv-globe" tabindex="0" aria-label="Textured sphere using lat-long mapping. Click to place P, drag or arrow keys to rotate." style="aspect-ratio:1/1;max-width:460px;margin:0 auto"></canvas>
+      <div class="row" style="justify-content:space-between">
+        <span class="hint">Click to place P &middot; drag to turn</span>
+        <div class="seg" role="radiogroup" aria-label="Test texture">
+          <input type="radio" name="tex" id="t-checker" value="checker" checked><label for="t-checker">Checker</label>
+          <input type="radio" name="tex" id="t-dots" value="dots"><label for="t-dots">Circles</label>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="stage">
+        <canvas id="cv-uv" aria-label="The flat lat-long texture with P marked at its UV coordinate. Click to place P." style="aspect-ratio:2/1"></canvas>
+        <div class="row" style="justify-content:space-between"><span class="hint mono">u: 0 &rarr; 1 (&phi; 0&deg; &rarr; 360&deg;)</span><span class="hint mono">v: 0 top &rarr; 1 bottom (&theta;)</span></div>
+      </div>
+      <div class="big">
+        <div><div class="eyebrow">UV at P</div><div class="v" id="r-uv"></div></div>
+        <div><div class="eyebrow">Horizontal squeeze</div><div class="v" id="r-squeeze"></div></div>
+      </div>
+      <p class="hint" id="r-squeeze-text"></p>
+    </div>
+  </div>
+  <div class="twocol">
+    <div class="note"><strong>Pole pinching.</strong> Every row of the texture has the same number of texels, but the circle it wraps around has circumference 2&pi;&thinsp;sin&theta;. Near the poles a whole row is crushed into a tiny ring. Switch to Circles and turn the globe to look down on a pole.</div>
+    <div class="note"><strong>The seam.</strong> At &phi; = 0&deg; u jumps from 1 back to 0. The checker's hue jumps there too. In a shader that jump wrecks the derivatives used for mip selection, which shows up as a thin line of the smallest mip.</div>
+  </div>
+  <div class="codebox">
+    <div class="codehead"><h3>HLSL: direction to lat-long UV <span class="hint">(Custom node, input <code>Dir</code>, output Float 2)</span></h3><button data-copy="code-uv">Copy</button></div>
+<pre id="code-uv">float3 d = normalize(Dir);
+float  u = atan2(d.y, d.x) / (2.0 * PI);   <span class="cm">// -0.5..0.5</span>
+u = frac(u);                               <span class="cm">// wrap to 0..1</span>
+float  v = acos(clamp(d.z, -1.0, 1.0)) / PI; <span class="cm">// 0 at +Z, 1 at -Z</span>
+return float2(u, v);</pre>
+  </div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="station" id="normals">
+  <div class="station-head"><span class="num">3</span><h2>Packing a normal into two channels</h2>
+    <p>A unit normal has only two degrees of freedom, so two 8-bit channels can hold it. Tangent-space normals all point out of the surface (z &ge; 0), so <span class="th">&theta;</span> only needs 0&deg; to 90&deg;. Drag on the disc to pick a normal; the colour shows the angular error after quantisation at every direction.</p></div>
+  <div class="split">
+    <div class="stage">
+      <canvas id="cv-hemi" tabindex="0" aria-label="Error heatmap over the hemisphere seen from above. Drag to choose a normal." style="aspect-ratio:1/1;max-width:460px;margin:0 auto"></canvas>
+      <div class="legend"><div class="bar"></div><div class="ticks"><span>0&deg;</span><span id="lg-mid"></span><span id="lg-max"></span></div></div>
+      <div class="row" style="justify-content:space-between"><span class="hint">Looking down +Z: centre is (0,0,1), rim is the horizon</span>
+        <label class="hint row" style="gap:6px"><input type="checkbox" id="shared">One scale for all schemes</label></div>
+    </div>
+    <div class="panel">
+      <div class="readout" style="gap:10px">
+        <div class="row" style="justify-content:space-between">
+          <div class="seg" role="radiogroup" aria-label="Packing scheme">
+            <input type="radio" name="scheme" id="sc-sph" value="sph" checked><label for="sc-sph">Spherical &theta;&phi;</label>
+            <input type="radio" name="scheme" id="sc-xy" value="xy"><label for="sc-xy">XY + derive Z</label>
+            <input type="radio" name="scheme" id="sc-oct" value="oct"><label for="sc-oct">Octahedral</label>
+          </div>
+        </div>
+        <div class="ctrl"><label for="s-bits">Bits</label><input type="range" id="s-bits" min="4" max="16" step="1" value="8"><output id="o-bits">8</output></div>
+      </div>
+      <div class="readout" id="n-read"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Scheme</th><th>Max error</th><th>Mean error</th><th>Filter-safe</th><th>Decode</th></tr></thead>
+          <tbody id="cmp"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="twocol">
+    <div class="note"><strong>Why the spherical scheme cannot be filtered.</strong> Two neighbouring texels hold &phi; = 358&deg; and &phi; = 2&deg;, stored as R = 0.994 and R = 0.006. Bilinear filtering averages them to 0.500, which decodes to &phi; = 180&deg;: a normal pointing the opposite way. Mip-maps fail the same way. XY and hemisphere octahedral have no wrap, so they filter safely.</div>
+    <div class="note"><strong>What Unreal does by default.</strong> A texture set to Normalmap compression is stored as BC5: X and Y only, with Z rebuilt in the shader. That is the XY scheme above. A Texture Sample with its Sampler Type set to Normal rebuilds Z for you; the <code>DeriveNormalZ</code> node does the same job when you store X and Y yourself, for example in two channels of a packed mask. Compare its error near the rim with the other two.</div>
+  </div>
+  <div class="codebox">
+    <div class="codehead"><h3 id="code-title">HLSL</h3><button data-copy="code-n">Copy</button></div>
+    <pre id="code-n"></pre>
+  </div>
+</section>
+
+<!-- ===================== Review ===================== -->
+<section class="station" id="review">
+  <div class="station-head"><span class="num" aria-hidden="true">&#8213;</span><h2>Common pitfalls</h2><p>The bugs that turn up in student shaders every year.</p></div>
+  <ul class="pit">
+    <li><strong>Swapped names.</strong> Physics texts use &theta; for the polar angle; many maths texts use &phi;. Check which angle is measured from the pole, not which letter is used.</li>
+    <li><strong>atan2 argument order.</strong> HLSL, C# and C++ take <code>atan2(y, x)</code>. Excel's ATAN2 takes (x, y). Swapping them mirrors the azimuth about the 45&deg; line.</li>
+    <li><strong>Negative azimuth.</strong> <code>atan2</code> returns &minus;&pi; to &pi;. Divide by 2&pi; and you get &minus;0.5 to 0.5; wrap with <code>frac</code> or add 2&pi; to negatives before using it as u.</li>
+    <li><strong>NaN from acos.</strong> After normalising, z can be 1.0000001. <code>acos</code> of that is NaN, which renders black. Clamp or <code>saturate</code> first.</li>
+    <li><strong>Undefined &phi; at the poles.</strong> At &theta; = 0&deg; or 180&deg; every azimuth gives the same point. Code that divides by sin&theta; will blow up there.</li>
+    <li><strong>Seam lines.</strong> The u wrap at &phi; = 0&deg; spikes the screen-space derivatives and selects the lowest mip. Fix it with <code>SampleGrad</code> using derivatives from an unwrapped u, or sample without mips.</li>
+  </ul>
+
+  <h2 style="margin-top:24px">Check your understanding</h2>
+  <p class="hint">Predict first, then confirm with the stations above, then open the answer.</p>
+  <div>
+    <details><summary>A direction points straight down. What are &theta; and &phi;, and where is it in the lat-long texture?</summary>
+      <p>&theta; = 180&deg;, and &phi; can be anything. The entire bottom row of the texture (v = 1) maps to that single point. Try the &minus;Z preset, then drag the &phi; slider.</p></details>
+    <details><summary>At &theta; = 30&deg;, how much narrower is a texel on the sphere than at the equator?</summary>
+      <p>sin 30&deg; = 0.5, so it is half as wide: squeezed by a factor of 2. Station 2 shows this as the horizontal squeeze.</p></details>
+    <details><summary>Why divide &theta; by 90&deg; rather than 180&deg; when packing tangent-space normals?</summary>
+      <p>Tangent-space normals never point into the surface, so &theta; never exceeds 90&deg;. Dividing by 90&deg; spreads all 256 levels over the range actually used, doubling the polar precision from about 0.71&deg; to 0.35&deg; per step at 8 bits.</p></details>
+    <details><summary>Which packing scheme has its worst error at the horizon, and why?</summary>
+      <p>XY + derive Z. Near the rim z = &radic;(1 &minus; x&sup2; &minus; y&sup2;) is very steep, so a one-step rounding of x or y produces a large change in z. Lower the bits to 5 to see it clearly.</p></details>
+    <details><summary>Viewed from above in Unreal, does &phi; increase clockwise or anticlockwise?</summary>
+      <p>Clockwise. Unreal is left-handed: looking down from +Z, +X is up the screen and +Y is to the right, so turning from +X to +Y is clockwise. Switch handedness in station 1 and look from above to compare.</p></details>
+  </div>
+</section>
+
+<footer>DkIT &middot; BSc (Hons) in Computing in Games Development &middot; COMP I8015</footer>
+</div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const D2R=Math.PI/180,R2D=180/Math.PI,TAU=Math.PI*2;
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const f=(x,d=3)=>{const v=Math.abs(x)<0.5*Math.pow(10,-d)?0:x;return (v>=0?"\u2007":"")+v.toFixed(d).replace("-","\u2212");};
+const fd=(x,d=1)=>x.toFixed(d)+"\u00b0";
+const S={r:1,th:55,ph:40,yaw:40,pitch:24,lh:true,tex:"checker",yaw2:25,pitch2:18,scheme:"sph",bits:8,n:null,shared:false};
+
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const sph2cart=(r,th,ph)=>{const t=th*D2R,p=ph*D2R,s=Math.sin(t);return [r*s*Math.cos(p),r*s*Math.sin(p),r*Math.cos(t)];};
+function basis(yaw,pitch){const y=yaw*D2R,p=pitch*D2R;const d=[Math.cos(p)*Math.cos(y),Math.cos(p)*Math.sin(y),Math.sin(p)];
+  const fwd=[-d[0],-d[1],-d[2]];const right=norm(cross(fwd,[0,0,1]));const up=cross(right,fwd);return {d,right,up};}
+const proj=(p,B,m)=>[m*dot(p,B.right),dot(p,B.up),dot(p,B.d)];
+
+let TK={};
+function readTokens(){const cs=getComputedStyle(document.documentElement);
+  for(const k of ["bg","surface","sunk","fg","muted","line","theta","phi","ax-x","ax-y","ax-z","heat-lo","heat-mid","heat-hi"])TK[k]=cs.getPropertyValue("--"+k).trim();}
+const hex=h=>{h=h.replace("#","");if(h.length===3)h=h.split("").map(c=>c+c).join("");return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];};
+
+function fit(cv,maxPx){const dpr=Math.min(2,window.devicePixelRatio||1);const r=cv.getBoundingClientRect();
+  let w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(maxPx&&w>maxPx){h=Math.round(h*maxPx/w);w=maxPx;}
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;return true;}return false;}
+
+function orbit(cv,key,onClick){let st=null;
+  cv.addEventListener("pointerdown",e=>{st={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,moved:false};cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener("pointermove",e=>{if(!st)return;if(!st.moved&&Math.hypot(e.clientX-st.x0,e.clientY-st.y0)<4)return;
+    st.moved=true;const dx=e.clientX-st.x,dy=e.clientY-st.y;st.x=e.clientX;st.y=e.clientY;
+    S["yaw"+key]+=dx*0.5*(S.lh?1:-1);S["pitch"+key]=clamp(S["pitch"+key]+dy*0.4,-85,85);render();});
+  const end=e=>{if(st&&!st.moved&&onClick)onClick(e);st=null;};
+  cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",()=>{st=null;});
+  cv.addEventListener("keydown",e=>{const m={ArrowLeft:[-6,0],ArrowRight:[6,0],ArrowUp:[0,-5],ArrowDown:[0,5]}[e.key];if(!m)return;
+    e.preventDefault();S["yaw"+key]+=m[0];S["pitch"+key]=clamp(S["pitch"+key]+m[1],-85,85);render();});}
+
+/* ---------------- Station 1 ---------------- */
+const cvS=$("#cv-scene");
+function drawScene(){fit(cvS);const ctx=cvS.getContext("2d"),W=cvS.width,H=cvS.height;ctx.clearRect(0,0,W,H);
+  const k=W/cvS.getBoundingClientRect().width,B=basis(S.yaw,S.pitch),m=S.lh?-1:1;
+  const sc=Math.min(W,H)*0.29,cx=W/2,cy=H*0.53;
+  const P=p=>{const q=proj(p,B,m);return [cx+q[0]*sc,cy-q[1]*sc,q[2]];};
+  const r=S.r;ctx.lineCap="round";ctx.lineJoin="round";
+  const poly=(pts,col,w,alphaF,alphaB,dash)=>{ctx.strokeStyle=col;ctx.lineWidth=w*k;ctx.setLineDash(dash?dash.map(v=>v*k):[]);
+    for(let i=0;i<pts.length-1;i++){const a=P(pts[i]),b=P(pts[i+1]);ctx.globalAlpha=(dot(pts[i],B.d)+dot(pts[i+1],B.d))>=0?alphaF:alphaB;
+      ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();}ctx.globalAlpha=1;ctx.setLineDash([]);};
+  // wire sphere
+  for(let t=30;t<180;t+=30){const pts=[];for(let i=0;i<=72;i++)pts.push(sph2cart(r,t,i*5));poly(pts,TK.muted,t===90?1.4:0.8,t===90?0.6:0.35,0.12);}
+  for(let p=0;p<360;p+=30){const pts=[];for(let i=0;i<=36;i++)pts.push(sph2cart(r,i*5,p));poly(pts,TK.muted,0.8,0.35,0.12);}
+  // axes
+  const L=Math.max(1.45,r*1.25);
+  const axis=(v,col,lab)=>{const o=P([0,0,0]),e=P(v.map(c=>c*L)),n=P(v.map(c=>-c*L));
+    ctx.strokeStyle=col;ctx.lineWidth=1.2*k;ctx.globalAlpha=0.45;ctx.setLineDash([3*k,4*k]);ctx.beginPath();ctx.moveTo(o[0],o[1]);ctx.lineTo(n[0],n[1]);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;ctx.lineWidth=2*k;ctx.beginPath();ctx.moveTo(o[0],o[1]);ctx.lineTo(e[0],e[1]);ctx.stroke();
+    const ang=Math.atan2(e[1]-o[1],e[0]-o[0]),h=9*k;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(e[0]+Math.cos(ang)*2*k,e[1]+Math.sin(ang)*2*k);
+    ctx.lineTo(e[0]-Math.cos(ang-0.4)*h,e[1]-Math.sin(ang-0.4)*h);ctx.lineTo(e[0]-Math.cos(ang+0.4)*h,e[1]-Math.sin(ang+0.4)*h);ctx.fill();
+    ctx.font=`700 ${13*k}px "Atkinson Hyperlegible",sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(lab,e[0]+Math.cos(ang)*14*k,e[1]+Math.sin(ang)*14*k);};
+  axis([1,0,0],TK["ax-x"],"X");axis([0,1,0],TK["ax-y"],"Y");axis([0,0,1],TK["ax-z"],"Z");
+  const p=sph2cart(r,S.th,S.ph),sh=[p[0],p[1],0],O=P([0,0,0]),PP=P(p),SH=P(sh);
+  // wedges
+  const wedge=(pts,col)=>{ctx.fillStyle=col;ctx.globalAlpha=0.16;ctx.beginPath();ctx.moveTo(O[0],O[1]);for(const q of pts){const s=P(q);ctx.lineTo(s[0],s[1]);}ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+    ctx.strokeStyle=col;ctx.lineWidth=2.2*k;ctx.beginPath();pts.forEach((q,i)=>{const s=P(q);i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1]);});ctx.stroke();};
+  const at=Math.min(0.42,Math.max(0.22,r*0.45)),ap=Math.min(0.36,Math.max(0.2,r*0.38));
+  const thPts=[],phPts=[];for(let i=0;i<=40;i++){thPts.push(sph2cart(at,S.th*i/40,S.ph));phPts.push(sph2cart(ap,90,S.ph*i/40));}
+  wedge(phPts,TK.phi);wedge(thPts,TK.theta);
+  // projection lines
+  ctx.strokeStyle=TK.fg;ctx.lineWidth=1.3*k;ctx.setLineDash([5*k,4*k]);ctx.globalAlpha=0.7;
+  ctx.beginPath();ctx.moveTo(PP[0],PP[1]);ctx.lineTo(SH[0],SH[1]);ctx.lineTo(O[0],O[1]);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=TK.fg;ctx.beginPath();ctx.arc(SH[0],SH[1],3*k,0,TAU);ctx.fill();
+  // vector
+  ctx.strokeStyle=TK.fg;ctx.lineWidth=2.6*k;ctx.beginPath();ctx.moveTo(O[0],O[1]);ctx.lineTo(PP[0],PP[1]);ctx.stroke();
+  ctx.fillStyle=TK.surface;ctx.strokeStyle=TK.fg;ctx.lineWidth=2.4*k;ctx.beginPath();ctx.arc(PP[0],PP[1],6*k,0,TAU);ctx.fill();ctx.stroke();
+  // labels
+  const label=(txt,pt,col,dx=0,dy=0)=>{ctx.font=`700 ${14*k}px "Atkinson Hyperlegible",sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.lineWidth=4*k;ctx.strokeStyle=TK.surface;ctx.strokeText(txt,pt[0]+dx*k,pt[1]+dy*k);ctx.fillStyle=col;ctx.fillText(txt,pt[0]+dx*k,pt[1]+dy*k);};
+  label("\u03b8",P(sph2cart(at*1.35,S.th/2,S.ph)),TK.theta);
+  label("\u03c6",P(sph2cart(ap*1.4,90,S.ph/2)),TK.phi);
+  label("P",PP,TK.fg,12,-12);
+  if(r*Math.sin(S.th*D2R)>0.12)label("r sin\u03b8",P([sh[0]*0.55,sh[1]*0.55,0]),TK.muted,0,12);
+}
+function updateS1(){const p=sph2cart(S.r,S.th,S.ph),t=S.th*D2R,h=S.ph*D2R;
+  $("#o-r").textContent=S.r.toFixed(2);$("#o-th").textContent=fd(S.th);$("#o-ph").textContent=fd(S.ph);
+  $("#s-r").value=S.r;$("#s-th").value=S.th;$("#s-ph").value=S.ph;
+  $("#r-sph").innerHTML=`(${S.r.toFixed(2)}, <span class="th">${fd(S.th)}</span>, <span class="ph">${fd(S.ph)}</span>)`;
+  $("#r-cart").innerHTML=`(<span class="ax-x">${f(p[0])}</span>, <span class="ax-y">${f(p[1])}</span>, <span class="ax-z">${f(p[2])}</span>)`;
+  const st=Math.sin(t),ct=Math.cos(t),cp=Math.cos(h),sp=Math.sin(h);
+  $("#f-x").innerHTML=`<span class="ax-x">x</span> = r sin<span class="th">\u03b8</span> cos<span class="ph">\u03c6</span> = ${S.r.toFixed(2)} \u00d7 ${f(st)} \u00d7 ${f(cp)} = ${f(p[0])}`;
+  $("#f-y").innerHTML=`<span class="ax-y">y</span> = r sin<span class="th">\u03b8</span> sin<span class="ph">\u03c6</span> = ${S.r.toFixed(2)} \u00d7 ${f(st)} \u00d7 ${f(sp)} = ${f(p[1])}`;
+  $("#f-z").innerHTML=`<span class="ax-z">z</span> = r cos<span class="th">\u03b8</span> \u2007\u2007\u2007\u2007\u2007= ${S.r.toFixed(2)} \u00d7 ${f(ct)} \u2007\u2007\u2007\u2007\u2007\u2007\u2007\u2007\u2007= ${f(p[2])}`;
+  const r2=Math.hypot(p[0],p[1],p[2]);let ph2=Math.atan2(p[1],p[0])*R2D;const raw=ph2;if(ph2<0)ph2+=360;
+  $("#f-r").innerHTML=`r = \u221a(x\u00b2 + y\u00b2 + z\u00b2) = ${r2.toFixed(3)}`;
+  $("#f-t").innerHTML=`<span class="th">\u03b8</span> = acos(z / r) = acos(${f(p[2]/r2)}) = ${fd(Math.acos(clamp(p[2]/r2,-1,1))*R2D)}`;
+  const pole=st<1e-6;
+  $("#f-p").innerHTML=pole?`<span class="ph">\u03c6</span> = atan2(y, x) is undefined at a pole: any \u03c6 gives this point`:
+    `<span class="ph">\u03c6</span> = atan2(y, x) = ${raw.toFixed(1)}\u00b0${raw<-0.05?` \u2192 + 360\u00b0 = ${fd(ph2)}`:""}`;}
+
+/* ---------------- Station 2 ---------------- */
+function hsl(h,s,l){h/=360;const a=s*Math.min(l,1-l);const fn=n=>{const k=(n+h*12)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1));};return [fn(0)*255,fn(8)*255,fn(4)*255];}
+function tex(u,v){
+  if(S.tex==="checker"){const cu=Math.floor(u*24),cv=Math.floor(v*12);if(Math.abs(v-0.5)<0.004)return [250,250,250];
+    return hsl(u*300,0.62,((cu+cv)&1)?0.64:0.40);}
+  const fu=(u*24)%1-0.5,fv=(v*12)%1-0.5,d=Math.hypot(fu,fv);
+  const edge=clamp((0.32-d)*40,0,1);const a=[34,48,74],b=[246,226,190];return [a[0]+(b[0]-a[0])*edge,a[1]+(b[1]-a[1])*edge,a[2]+(b[2]-a[2])*edge];}
+const cvG=$("#cv-globe"),cvU=$("#cv-uv");
+function drawGlobe(){fit(cvG,720);const ctx=cvG.getContext("2d"),W=cvG.width,H=cvG.height;const k=W/cvG.getBoundingClientRect().width;
+  const R=W*0.45,cx=W/2,cy=H/2,B=basis(S.yaw2,S.pitch2),m=S.lh?-1:1;const img=ctx.createImageData(W,H),D=img.data;
+  for(let py=0;py<H;py++){const sy=(cy-py-0.5)/R;for(let px=0;px<W;px++){const sx=(px+0.5-cx)/R,rr=sx*sx+sy*sy;if(rr>1.0)continue;
+    const sz=Math.sqrt(Math.max(0,1-rr)),sxw=sx*m;
+    const x=B.right[0]*sxw+B.up[0]*sy+B.d[0]*sz,y=B.right[1]*sxw+B.up[1]*sy+B.d[1]*sz,z=B.right[2]*sxw+B.up[2]*sy+B.d[2]*sz;
+    let ph=Math.atan2(y,x);if(ph<0)ph+=TAU;const c=tex(ph/TAU,Math.acos(clamp(z,-1,1))/Math.PI);const sh=0.45+0.55*sz;
+    const i=(py*W+px)*4;D[i]=c[0]*sh;D[i+1]=c[1]*sh;D[i+2]=c[2]*sh;D[i+3]=clamp((1-Math.sqrt(rr))*R*1.5,0,1)*255;}}
+  ctx.putImageData(img,0,0);
+  ctx.strokeStyle=TK.line;ctx.lineWidth=1*k;ctx.beginPath();ctx.arc(cx,cy,R,0,TAU);ctx.stroke();
+  const pt=sph2cart(1,S.th,S.ph),q=proj(pt,B,m),X=cx+q[0]*R,Y=cy-q[1]*R;
+  ctx.globalAlpha=q[2]>=0?1:0.35;ctx.setLineDash(q[2]>=0?[]:[3*k,3*k]);
+  ctx.lineWidth=3.5*k;ctx.strokeStyle="#ffffff";ctx.beginPath();ctx.arc(X,Y,9*k,0,TAU);ctx.stroke();
+  ctx.lineWidth=2*k;ctx.strokeStyle="#111111";ctx.beginPath();ctx.arc(X,Y,9*k,0,TAU);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
+let uvCache=null;
+function drawUV(){const resized=fit(cvU,1200);const ctx=cvU.getContext("2d"),W=cvU.width,H=cvU.height,k=W/cvU.getBoundingClientRect().width;
+  if(resized||!uvCache||uvCache.tex!==S.tex||uvCache.W!==W){const img=ctx.createImageData(W,H),D=img.data;
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=tex((x+0.5)/W,(y+0.5)/H),i=(y*W+x)*4;D[i]=c[0];D[i+1]=c[1];D[i+2]=c[2];D[i+3]=255;}
+    uvCache={tex:S.tex,W,img};}
+  ctx.putImageData(uvCache.img,0,0);
+  ctx.strokeStyle="rgba(255,255,255,0.55)";ctx.lineWidth=1*k;ctx.setLineDash([4*k,4*k]);
+  for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(W*i/4,0);ctx.lineTo(W*i/4,H);ctx.stroke();}
+  for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(0,H*i/4);ctx.lineTo(W,H*i/4);ctx.stroke();}ctx.setLineDash([]);
+  ctx.font=`500 ${10.5*k}px "JetBrains Mono",monospace`;ctx.textBaseline="top";
+  const tag=(t,x,y,al)=>{ctx.textAlign=al;const w=ctx.measureText(t).width;const bx=al==="left"?x:al==="right"?x-w:x-w/2;
+    ctx.fillStyle="rgba(10,14,20,0.72)";ctx.fillRect(bx-3*k,y-2*k,w+6*k,15*k);ctx.fillStyle="#ffffff";ctx.fillText(t,x,y);};
+  [0,90,180,270].forEach((d,i)=>tag(`\u03c6 ${d}\u00b0`,W*i/4+4*k,H-17*k,"left"));
+  [45,90,135].forEach((d,i)=>tag(`\u03b8 ${d}\u00b0`,W-4*k,H*(i+1)/4+3*k,"right"));
+  const X=S.ph/360*W,Y=S.th/180*H;
+  ctx.lineWidth=3.5*k;ctx.strokeStyle="#ffffff";ctx.beginPath();ctx.arc(X,Y,8*k,0,TAU);ctx.stroke();
+  ctx.lineWidth=2*k;ctx.strokeStyle="#111111";ctx.beginPath();ctx.arc(X,Y,8*k,0,TAU);ctx.stroke();}
+function updateS2(){const u=S.ph/360,v=S.th/180,s=Math.sin(S.th*D2R);
+  $("#r-uv").innerHTML=`u = ${u.toFixed(3)}<br>v = ${v.toFixed(3)}`;
+  if(s<0.005){$("#r-squeeze").textContent="\u221e (pole)";$("#r-squeeze-text").textContent="At the pole the whole texture row collapses to a single point.";}
+  else{$("#r-squeeze").textContent=`\u00d7${(1/s).toFixed(2)}`;
+    $("#r-squeeze-text").textContent=`At \u03b8 = ${S.th.toFixed(1)}\u00b0 this row wraps a circle sin\u03b8 = ${s.toFixed(3)} times the equator's length, so its texels are squeezed ${(1/s).toFixed(2)}\u00d7 horizontally.`;}}
+function clickGlobe(e){const r=cvG.getBoundingClientRect(),sx0=((e.clientX-r.left)/r.width-0.5)/0.45,sy=-((e.clientY-r.top)/r.height-0.5)/0.45;
+  const rr=sx0*sx0+sy*sy;if(rr>1)return;const sz=Math.sqrt(1-rr),sx=sx0*(S.lh?-1:1),B=basis(S.yaw2,S.pitch2);
+  const w=[0,1,2].map(i=>B.right[i]*sx+B.up[i]*sy+B.d[i]*sz);let ph=Math.atan2(w[1],w[0])*R2D;if(ph<0)ph+=360;
+  S.th=Math.round(Math.acos(clamp(w[2],-1,1))*R2D*2)/2;S.ph=Math.round(ph*2)/2%360;render();}
+let uvDrag=false;
+function setUV(e){const r=cvU.getBoundingClientRect();S.ph=Math.round(clamp((e.clientX-r.left)/r.width,0,0.9999)*720)/2;S.th=Math.round(clamp((e.clientY-r.top)/r.height,0,1)*360)/2;render();}
+cvU.addEventListener("pointerdown",e=>{uvDrag=true;cvU.setPointerCapture(e.pointerId);setUV(e);});
+cvU.addEventListener("pointermove",e=>{if(uvDrag)setUV(e);});
+cvU.addEventListener("pointerup",()=>{uvDrag=false;});
+
+/* ---------------- Station 3 ---------------- */
+const SCH={
+  sph:{name:"Spherical \u03b8\u03c6",filter:false,dec:"sin, cos \u00d7 2",
+    enc:n=>{let ph=Math.atan2(n[1],n[0]);if(ph<0)ph+=TAU;return [ph/TAU,Math.acos(clamp(n[2],0,1))/(Math.PI/2)];},
+    decode:e=>{const ph=e[0]*TAU,th=e[1]*Math.PI/2,s=Math.sin(th);return [s*Math.cos(ph),s*Math.sin(ph),Math.cos(th)];}},
+  xy:{name:"XY + derive Z",filter:true,dec:"sqrt",
+    enc:n=>[(n[0]+1)/2,(n[1]+1)/2],
+    decode:e=>{const x=e[0]*2-1,y=e[1]*2-1;return norm([x,y,Math.sqrt(Math.max(0,1-x*x-y*y))]);}},
+  oct:{name:"Octahedral",filter:true,dec:"abs, normalise",
+    enc:n=>{const s=Math.abs(n[0])+Math.abs(n[1])+n[2],px=n[0]/s,py=n[1]/s;return [(px+py)*0.5+0.5,(px-py)*0.5+0.5];},
+    decode:e=>{const fx=e[0]*2-1,fy=e[1]*2-1,px=(fx+fy)/2,py=(fx-fy)/2;return norm([px,py,1-Math.abs(px)-Math.abs(py)]);}}};
+const quant=(e,b)=>{const L=Math.pow(2,b)-1;return [Math.round(clamp(e[0],0,1)*L)/L,Math.round(clamp(e[1],0,1)*L)/L];};
+const angErr=(a,b)=>2*Math.asin(Math.min(1,Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2])/2))*R2D;
+const errOf=(sc,n,b)=>angErr(n,SCH[sc].decode(quant(SCH[sc].enc(n),b)));
+let stats={},heat=null,heatKey="";
+function computeStats(){const N=4000,g=Math.PI*(3-Math.sqrt(5));stats={};
+  for(const sc in SCH){let mx=0,sum=0;for(let i=0;i<N;i++){const z=1-(i+0.5)/N,s=Math.sqrt(1-z*z),a=i*g;const e=errOf(sc,[s*Math.cos(a),s*Math.sin(a),z],S.bits);mx=Math.max(mx,e);sum+=e;}
+    stats[sc]={max:mx,mean:sum/N};}}
+function scaleMax(){return S.shared?Math.max(...Object.values(stats).map(s=>s.max)):stats[S.scheme].max;}
+function buildHeat(){const key=[S.scheme,S.bits,S.shared,TK["heat-lo"],TK["heat-hi"]].join("|");if(heat&&heatKey===key)return;heatKey=key;
+  const N=240;const c=heat||document.createElement("canvas");c.width=c.height=N;const ctx=c.getContext("2d"),img=ctx.createImageData(N,N),D=img.data;
+  const lo=hex(TK["heat-lo"]),mi=hex(TK["heat-mid"]),hi=hex(TK["heat-hi"]),M=scaleMax()||1;
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){const x=(i+0.5)/N*2-1,y=1-(j+0.5)/N*2,rr=x*x+y*y;if(rr>1)continue;
+    const n=[x,y,Math.sqrt(1-rr)],t=clamp(errOf(S.scheme,n,S.bits)/M,0,1);const A=t<0.5?lo:mi,Bc=t<0.5?mi:hi,u=t<0.5?t*2:(t-0.5)*2;
+    const o=(j*N+i)*4;D[o]=A[0]+(Bc[0]-A[0])*u;D[o+1]=A[1]+(Bc[1]-A[1])*u;D[o+2]=A[2]+(Bc[2]-A[2])*u;D[o+3]=255;}
+  ctx.putImageData(img,0,0);heat=c;}
+const cvH=$("#cv-hemi");
+function drawHemi(){fit(cvH,900);buildHeat();const ctx=cvH.getContext("2d"),W=cvH.width,k=W/cvH.getBoundingClientRect().width;ctx.clearRect(0,0,W,W);
+  const pad=26*k,R=W/2-pad,cx=W/2,cy=W/2;
+  ctx.save();ctx.beginPath();ctx.arc(cx,cy,R,0,TAU);ctx.clip();ctx.imageSmoothingEnabled=true;ctx.drawImage(heat,cx-R,cy-R,R*2,R*2);ctx.restore();
+  ctx.strokeStyle=TK.muted;ctx.lineWidth=1*k;ctx.globalAlpha=0.5;
+  for(const a of [30,60]){ctx.beginPath();ctx.arc(cx,cy,R*Math.sin(a*D2R),0,TAU);ctx.stroke();}ctx.globalAlpha=1;
+  ctx.strokeStyle=TK.fg;ctx.beginPath();ctx.arc(cx,cy,R,0,TAU);ctx.stroke();
+  ctx.lineWidth=1.5*k;ctx.strokeStyle=TK["ax-x"];ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+R+14*k,cy);ctx.stroke();
+  ctx.strokeStyle=TK["ax-y"];ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx,cy-R-14*k);ctx.stroke();
+  ctx.font=`700 ${12*k}px "Atkinson Hyperlegible",sans-serif`;ctx.textBaseline="middle";ctx.textAlign="center";
+  ctx.fillStyle=TK["ax-x"];ctx.fillText("X",cx+R+20*k,cy+0.5);ctx.fillStyle=TK["ax-y"];ctx.fillText("Y",cx,cy-R-20*k);
+  ctx.fillStyle=TK.muted;ctx.font=`500 ${10*k}px "JetBrains Mono",monospace`;ctx.textAlign="left";
+  ctx.fillText("\u03b8 30\u00b0",cx+R*0.5*0.71+3*k,cy+R*0.5*0.71);ctx.fillText("\u03b8 60\u00b0",cx+R*0.866*0.71+3*k,cy+R*0.866*0.71);
+  const n=S.n,X=cx+n[0]*R,Y=cy-n[1]*R;
+  ctx.lineWidth=3.5*k;ctx.strokeStyle=TK.surface;ctx.beginPath();ctx.arc(X,Y,8*k,0,TAU);ctx.stroke();
+  ctx.lineWidth=2*k;ctx.strokeStyle=TK.fg;ctx.beginPath();ctx.arc(X,Y,8*k,0,TAU);ctx.stroke();
+  const M=scaleMax();$("#lg-max").textContent=M.toFixed(M<0.1?4:2)+"\u00b0";$("#lg-mid").textContent=(M/2).toFixed(M<0.1?4:2)+"\u00b0";}
+function setN(e){const r=cvH.getBoundingClientRect(),pad=26/ r.width*r.width,R=r.width/2-26;
+  let x=(e.clientX-r.left-r.width/2)/R,y=-(e.clientY-r.top-r.height/2)/R;const l=Math.hypot(x,y);if(l>0.999){x*=0.999/l;y*=0.999/l;}
+  S.n=[x,y,Math.sqrt(Math.max(0,1-x*x-y*y))];renderS3(false);}
+let hDrag=false;
+cvH.addEventListener("pointerdown",e=>{hDrag=true;cvH.setPointerCapture(e.pointerId);setN(e);});
+cvH.addEventListener("pointermove",e=>{if(hDrag)setN(e);});
+cvH.addEventListener("pointerup",()=>{hDrag=false;});
+cvH.addEventListener("keydown",e=>{const m={ArrowLeft:[-0.03,0],ArrowRight:[0.03,0],ArrowUp:[0,0.03],ArrowDown:[0,-0.03]}[e.key];if(!m)return;e.preventDefault();
+  let x=S.n[0]+m[0],y=S.n[1]+m[1];const l=Math.hypot(x,y);if(l>0.999){x*=0.999/l;y*=0.999/l;}S.n=[x,y,Math.sqrt(1-x*x-y*y)];renderS3(false);});
+
+const CODE={
+ sph:{title:"HLSL: spherical pack and unpack (hemisphere)",code:
+`<span class="cm">// Encode (Custom node, input N float3, output Float 2)</span>
+float3 n = normalize(N);
+float phi = atan2(n.y, n.x);               <span class="cm">// -PI..PI</span>
+phi = (phi < 0.0) ? phi + 2.0 * PI : phi;  <span class="cm">// 0..2PI</span>
+float theta = acos(saturate(n.z));         <span class="cm">// 0..PI/2 for z >= 0</span>
+return float2(phi / (2.0 * PI), theta / (0.5 * PI));
+
+<span class="cm">// Decode (Custom node, input Enc float2, output Float 3)</span>
+float phi   = Enc.x * 2.0 * PI;
+float theta = Enc.y * 0.5 * PI;
+float s = sin(theta);
+return float3(s * cos(phi), s * sin(phi), cos(theta));`},
+ xy:{title:"HLSL: XY pack with derived Z",code:
+`<span class="cm">// Encode (input N float3, output Float 2)</span>
+return normalize(N).xy * 0.5 + 0.5;
+
+<span class="cm">// Decode (input Enc float2, output Float 3)</span>
+<span class="cm">// Same job as Unreal's DeriveNormalZ node</span>
+float2 xy = Enc * 2.0 - 1.0;
+float  z  = sqrt(saturate(1.0 - dot(xy, xy)));
+return normalize(float3(xy, z));`},
+ oct:{title:"HLSL: hemisphere octahedral pack and unpack",code:
+`<span class="cm">// Encode (input N float3, output Float 2)</span>
+float3 n = normalize(N);
+float2 p = n.xy / (abs(n.x) + abs(n.y) + n.z);  <span class="cm">// onto the diamond |x|+|y| <= 1</span>
+return float2(p.x + p.y, p.x - p.y) * 0.5 + 0.5; <span class="cm">// rotate 45 deg to fill the square</span>
+
+<span class="cm">// Decode (input Enc float2, output Float 3)</span>
+float2 f = Enc * 2.0 - 1.0;
+float2 p = float2(f.x + f.y, f.x - f.y) * 0.5;
+float  z = 1.0 - abs(p.x) - abs(p.y);
+return normalize(float3(p, z));`}};
+
+function renderS3(full){if(full){computeStats();heat&&(heatKey="");}
+  drawHemi();
+  const n=S.n,sc=SCH[S.scheme],e=sc.enc(n),q=quant(e,S.bits),L=Math.pow(2,S.bits)-1,d=sc.decode(q),err=angErr(n,d);
+  let th=Math.acos(clamp(n[2],-1,1))*R2D,ph=Math.atan2(n[1],n[0])*R2D;if(ph<0)ph+=360;
+  const sw=`rgb(${Math.round(q[0]*255)},${Math.round(q[1]*255)},0)`;
+  $("#n-read").innerHTML=`
+    <div class="line"><span class="k">normal n \u2007\u2007</span> (<span class="ax-x">${f(n[0],4)}</span>, <span class="ax-y">${f(n[1],4)}</span>, <span class="ax-z">${f(n[2],4)}</span>)</div>
+    <div class="line"><span class="k">angles \u2007\u2007\u2007</span> <span class="th">\u03b8 ${th.toFixed(2)}\u00b0</span> \u00b7 <span class="ph">\u03c6 ${ph.toFixed(2)}\u00b0</span></div>
+    <div class="line"><span class="k">stored R,G \u2007</span> <span class="swatch" style="background:${sw}"></span>${Math.round(q[0]*L)}, ${Math.round(q[1]*L)} <span class="k">of ${L}</span> \u2192 (${q[0].toFixed(4)}, ${q[1].toFixed(4)})</div>
+    <div class="line"><span class="k">decoded n\u2032 </span> (${f(d[0],4)}, ${f(d[1],4)}, ${f(d[2],4)})</div>
+    <div class="line"><span class="k">error \u2007\u2007\u2007\u2007</span> <strong>${err.toFixed(4)}\u00b0</strong></div>`;
+  if(full){$("#o-bits").textContent=S.bits;
+    $("#cmp").innerHTML=Object.keys(SCH).map(k=>`<tr data-s="${k}" class="${k===S.scheme?"on":""}"><td>${SCH[k].name}</td><td>${stats[k].max.toFixed(3)}\u00b0</td><td>${stats[k].mean.toFixed(3)}\u00b0</td><td class="${SCH[k].filter?"ok":"bad"}">${SCH[k].filter?"Yes":"No"}</td><td>${SCH[k].dec}</td></tr>`).join("");
+    $("#code-title").textContent=CODE[S.scheme].title;$("#code-n").innerHTML=CODE[S.scheme].code;}}
+
+/* ---------------- wiring ---------------- */
+function render(){updateS1();drawScene();updateS2();drawGlobe();drawUV();}
+$("#s-r").addEventListener("input",e=>{S.r=+e.target.value;render();});
+$("#s-th").addEventListener("input",e=>{S.th=+e.target.value;render();});
+$("#s-ph").addEventListener("input",e=>{S.ph=+e.target.value;render();});
+document.querySelectorAll("[data-p]").forEach(b=>b.addEventListener("click",()=>{const [r,t,p]=b.dataset.p.split(",").map(Number);S.r=r;S.th=t;S.ph=p;render();}));
+document.querySelectorAll("input[name=hand]").forEach(i=>i.addEventListener("change",()=>{S.lh=$("#h-lh").checked;render();}));
+document.querySelectorAll("input[name=tex]").forEach(i=>i.addEventListener("change",()=>{S.tex=$("#t-dots").checked?"dots":"checker";render();}));
+document.querySelectorAll("input[name=scheme]").forEach(i=>i.addEventListener("change",()=>{S.scheme=document.querySelector("input[name=scheme]:checked").value;renderS3(true);}));
+$("#cmp").addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr)return;S.scheme=tr.dataset.s;$("#sc-"+S.scheme).checked=true;renderS3(true);});
+$("#s-bits").addEventListener("input",e=>{S.bits=+e.target.value;renderS3(true);});
+$("#shared").addEventListener("change",e=>{S.shared=e.target.checked;renderS3(true);});
+orbit(cvS,"",null);orbit(cvG,"2",clickGlobe);
+document.querySelectorAll("[data-copy]").forEach(b=>b.addEventListener("click",()=>{const el=document.getElementById(b.dataset.copy),txt=el.innerText;
+  const done=()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1400);};
+  try{navigator.clipboard.writeText(txt).then(done,()=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);});}
+  catch(_){const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);}}));
+
+S.n=sph2cart(1,40,60);
+function all(){readTokens();uvCache=null;render();renderS3(true);}
+let rt;const ro=new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(()=>{render();renderS3(false);},60);});
+[cvS,cvG,cvU,cvH].forEach(c=>ro.observe(c));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",all);
+new MutationObserver(all).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{render();renderS3(false);});
+all();
+})();
+</script>
+
+</body></html>

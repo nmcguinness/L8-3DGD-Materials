@@ -1,0 +1,23 @@
+# Text files: LF line endings
+* text=auto eol=lf
+*.md   text eol=lf
+*.ush  text eol=lf
+*.usf  text eol=lf
+*.ini  text eol=lf
+
+# Unreal binaries
+unreal/**/*.uasset filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.umap   filter=lfs diff=lfs merge=lfs -text
+
+# Source art inside the Unreal project
+unreal/**/*.png filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.tga filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.exr filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.hdr filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.psd filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+unreal/**/*.wav filter=lfs diff=lfs merge=lfs -text
+
+# Images used by notes and labs stay as normal files
+assets/images/*.png binary
+assets/images/*.jpg binary
