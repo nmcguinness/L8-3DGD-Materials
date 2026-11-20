@@ -28,6 +28,8 @@ b-image               | mousemove          | onHoverB           | B1 hover reado
 b-mute-N (per octave) | click              | onMuteToggle       | B1, B2 state, B3, readouts
 b-solo-N (per octave) | click              | onSoloToggle       | B1, B2 state, B3, readouts
 b-reset               | click              | onResetB           | all Demo B controls and views
+b-save-res            | change             | onSaveResChange    | b-save-res value label
+b-save                | click              | onSaveB            | b-save-status (downloads a PNG of B1)
 selftest-run          | click              | runSelfTest        | self-test results list
 (page URL #selftest)  | load               | runSelfTest        | self-test results list
 -->
@@ -279,6 +281,22 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
         <input type="checkbox" id="b-show-octaves">
         <p class="hint">Draws each octave's contribution as a faint line.</p>
       </div>
+      <fieldset>
+        <legend>Save texture</legend>
+        <div class="ctl">
+          <label for="b-save-res"><span>Resolution</span><output id="b-save-res-val" for="b-save-res">1024</output></label>
+          <select id="b-save-res">
+            <option value="256">256 x 256</option>
+            <option value="512">512 x 512</option>
+            <option value="1024" selected>1024 x 1024</option>
+            <option value="2048">2048 x 2048</option>
+            <option value="4096">4096 x 4096</option>
+          </select>
+          <p class="hint">The noise is recalculated at this size, not stretched, so the pattern matches B1 with more pixels.</p>
+        </div>
+        <button type="button" id="b-save">Save PNG</button>
+        <p class="hint" id="b-save-status" aria-live="polite">Saves B1 as an 8-bit greyscale PNG, without the row line.</p>
+      </fieldset>
       <button type="button" id="b-reset">Reset to defaults</button>
       <div class="readout" id="b-readout">
         <p id="b-read-sum">Amplitude sum: -</p>
@@ -590,13 +608,15 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
   const B_SIZE = 256;
   const Fbm = {
     cache: new Map(),
+    // Lattice offset of an octave, shared by the preview and the saved texture so both sample the same noise.
+    offset(index) { return [index * 17.31 + 3.7, index * 29.17 + 11.3]; },
     octaveField(type, seed, freq, index) {
       const key = `${type}|${seed}|${freq.toFixed(5)}|${index}`;
       if (this.cache.has(key)) return this.cache.get(key);
       if (this.cache.size > 48) this.cache.clear();
       const p = Lattice.perm(seed), out = new Float32Array(B_SIZE * B_SIZE);
       // Each octave is shifted by a different offset, so its grid does not line up with the octave below.
-      const ox = index * 17.31 + 3.7, oy = index * 29.17 + 11.3, step = freq / B_SIZE;
+      const [ox, oy] = this.offset(index), step = freq / B_SIZE;
       const fn = type === 'gradient' ? Lattice.gradient.bind(Lattice) : Lattice.value.bind(Lattice);
       for (let y = 0; y < B_SIZE; y++) for (let x = 0; x < B_SIZE; x++) out[y * B_SIZE + x] = fn(p, x * step + ox, y * step + oy);
       this.cache.set(key, out);
@@ -949,7 +969,49 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
     invalidate('B-gen');
   }
 
+  /* ---------- Demo B save ---------- */
+  // Render the current fBm settings to a new n x n canvas. Every pixel samples the noise functions directly,
+  // so a larger size adds real detail instead of enlarging the 256 x 256 preview.
+  function renderB(n) {
+    const act = Fbm.active(B, Fbm.octaves(B)), ampSum = act.reduce((s, o) => s + o.amp, 0), p = Lattice.perm(B.seed);
+    const fn = B.base === 'gradient' ? Lattice.gradient.bind(Lattice) : Lattice.value.bind(Lattice);
+    const steps = act.map(o => o.freq / n), offs = act.map(o => Fbm.offset(o.i));
+    const canvas = document.createElement('canvas'); canvas.width = n; canvas.height = n;
+    const ctx = canvas.getContext('2d'), img = ctx.createImageData(n, n), d = img.data;
+    for (let y = 0, k = 0; y < n; y++) for (let x = 0; x < n; x++, k += 4) {
+      let s = 0;
+      for (let j = 0; j < act.length; j++) s += act[j].amp * Fbm.shape(B.mode, fn(p, x * steps[j] + offs[j][0], y * steps[j] + offs[j][1]));
+      const v = Math.max(0, Math.min(255, Math.round(Fbm.display(B.mode, s, ampSum) * 255)));
+      d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+  function onSaveResChange(e) { $('b-save-res-val').textContent = e.target.value; }
+  function onSaveB() {
+    const n = Number($('b-save-res').value), btn = $('b-save'), status = $('b-save-status');
+    const name = `noise_${B.base}_${B.mode}_seed${B.seed}_${n}.png`;
+    btn.disabled = true; status.textContent = `Rendering ${n} x ${n}...`;
+    // The timer lets the status text paint before the render blocks the page.
+    setTimeout(() => {
+      try {
+        renderB(n).toBlob(blob => {
+          btn.disabled = false;
+          if (!blob) { status.textContent = 'Could not create the PNG. Try a lower resolution.'; return; }
+          const a = document.createElement('a'), url = URL.createObjectURL(blob);
+          a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          status.textContent = `Saved ${name}.`;
+        }, 'image/png');
+      } catch (err) {
+        btn.disabled = false; status.textContent = 'Could not render at this resolution. Try a lower one.';
+      }
+    }, 30);
+  }
+
   function wire() {
+    $('b-save-res').addEventListener('change', onSaveResChange);
+    $('b-save').addEventListener('click', onSaveB);
     document.querySelectorAll('input[name=a-colour]').forEach(r => r.addEventListener('change', onPresetChange));
     $('a-beta').addEventListener('input', onBetaInput);
     $('a-seed').addEventListener('change', onSeedChangeA);
@@ -1070,6 +1132,19 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
     results.push({ name: 'aliasing warning shown above 0.5 cycles per pixel', pass: !$('b-read-warn').hidden, note: '' });
     $('b-reset').click(); await settle();
     results.push({ name: 'aliasing warning hidden at defaults', pass: $('b-read-warn').hidden, note: '' });
+
+    // Saved texture: a 256 render must match the preview, and a larger render must have the chosen size.
+    // The render is checked directly, so the self-test does not download a file.
+    await check('b-save-res (to 512)', () => [$('b-save-res-val')], () => setValue($('b-save-res'), 512, 'change'));
+    setValue($('b-save-res'), 1024, 'change');
+    {
+      const d = renderB(B_SIZE).getContext('2d').getImageData(0, 0, B_SIZE, B_SIZE).data;
+      let worst = 0;
+      for (let i = 0; i < B.image.length; i++) worst = Math.max(worst, Math.abs(d[i * 4] - Math.round(Math.max(0, Math.min(1, B.image[i])) * 255)));
+      results.push({ name: `save render at 256 matches B1 (largest difference ${worst} of 255)`, pass: worst <= 1, note: '' });
+      const big = renderB(512);
+      results.push({ name: 'save render at 512 is 512 x 512', pass: big.width === 512 && big.height === 512, note: '' });
+    }
 
     // Restore Demo A defaults.
     setValue($('a-seed'), 1, 'change'); setValue($('a-beta'), 0, 'input'); choose($('a-colour-white')); await settle();
