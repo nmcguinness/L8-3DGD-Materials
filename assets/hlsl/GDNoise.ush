@@ -1,0 +1,41 @@
+// GDNoise.ush
+// Hash, value noise and fBm helpers for COMP I8015 3D Game Development.
+// Include from a Custom node as /Plugin/GDShaders/GDNoise.ush (see Notes 10, section 5.6).
+
+#pragma once
+
+// A repeatable pseudo-random value from 0 to 1 for a 2D point.
+float GDHash(float2 p)
+{
+    return frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+// Value noise: random values at whole-number points, blended smoothly between them.
+float GDValueNoise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float a = GDHash(i);
+    float b = GDHash(i + float2(1.0, 0.0));
+    float c = GDHash(i + float2(0.0, 1.0));
+    float d = GDHash(i + float2(1.0, 1.0));
+    return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+}
+
+// Fractal Brownian motion: octaves of value noise, each at double the frequency and half the strength.
+// Returns 0 to 1 whatever the octave count.
+float GDFBM(float2 p, int octaves)
+{
+    float sum = 0.0;
+    float amp = 0.5;
+    float norm = 0.0;
+    for (int o = 0; o < octaves; o++)
+    {
+        sum += GDValueNoise(p) * amp;
+        norm += amp;
+        p *= 2.0;
+        amp *= 0.5;
+    }
+    return sum / norm;
+}

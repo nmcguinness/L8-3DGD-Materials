@@ -1,0 +1,44 @@
+// GDShapes.ush
+// Signed distance fields and combining operations for COMP I8015 3D Game Development.
+// Every shape returns a negative value inside, 0 on the edge and a positive value outside.
+// Include from a Custom node as /Plugin/GDShaders/GDShapes.ush (see Notes 10, section 5.6).
+
+#pragma once
+
+float GDCircle(float2 p, float radius)
+{
+    return length(p) - radius;
+}
+
+float GDBox(float2 p, float2 halfSize)
+{
+    float2 q = abs(p) - halfSize;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+}
+
+float GDRing(float2 p, float radius, float halfWidth)
+{
+    return abs(length(p) - radius) - halfWidth;
+}
+
+float GDUnion(float d1, float d2)
+{
+    return min(d1, d2);
+}
+
+float GDIntersect(float d1, float d2)
+{
+    return max(d1, d2);
+}
+
+float GDSubtract(float d1, float d2)
+{
+    return max(d1, -d2);
+}
+
+// An anti-aliased mask from a distance: 1 inside, 0 outside, smoothed over one pixel.
+float GDFill(float d)
+{
+    float aa = fwidth(d);
+    return 1.0 - smoothstep(-aa, aa, d);
+}

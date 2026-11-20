@@ -13,7 +13,7 @@ topic_code: MAT-S1
 difficulty_tier: intermediate
 duration: "Self-study, about 45 min reading plus 30 min worked example"
 prerequisites: [01_pbr_and_material_editor, 02_texture_packing_and_spherical_coordinates]
-feeds_into: [03_runtime_materials_and_performance, 06_hlsl_fundamentals, 07_applied_hlsl]
+feeds_into: [03_runtime_materials_and_performance, 09_hlsl_fundamentals, 10_applied_hlsl]
 engine_version: "UE 5.7"
 ---
 
@@ -335,9 +335,9 @@ Turn the octave 3 weight to 0 and back. The broad patches stay, but the fine bre
 ## 10. How This Builds
 
 - **Notes 02** explains what a texture sample costs, how to pack channels and why dependent lookups are slow. This document applies all three to noise.
-- **Week 3** builds a noise-driven dissolve with an emissive edge, where the noise choice decides how the edge looks.
-- **Week 6** writes hash noise and procedural patterns in a Custom node, so you see the arithmetic a `Noise` node hides.
-- **Week 7** writes fBm as an HLSL loop, where `[unroll]` and octave count decide the cost.
+- **Week 4** builds a noise-driven dissolve with an emissive edge, where the noise choice decides how the edge looks.
+- **Week 8** writes hash noise and procedural patterns in a Custom node, so you see the arithmetic a `Noise` node hides.
+- **Week 9** writes fBm as an HLSL loop, where `[unroll]` and octave count decide the cost.
 
 ---
 

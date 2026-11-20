@@ -37,11 +37,11 @@ Follow these rules when naming assets in an Unreal Engine project.
 
 | Avoid | Prefer |
 |:--|:--|
-| `NewMaterial` | `MI_Env_Stone_Opaque` |
+| `NewMaterial` | `MI_Env_StoneWall_Opaque` |
 | `model3` | `SM_StoneWall` |
 | `texture final` | `T_StoneWall_Albedo` |
 | `player final 2` | `BP_Player` |
-| `NewMap` | `L_MainMenu` |
+| `NewMap` | `Lvl_MainMenu` |
 | `PlayerScript.h` | `PlayerCharacter.h` |
 
 ## 3. Recommended Asset Naming Convention
@@ -70,7 +70,7 @@ Not every asset needs every element. Use the elements that make the name clearer
 Two asset groups use a different pattern:
 
 - **C++ classes** follow Epic's C++ coding standard, with type prefixes but no underscores (Section 4.1).
-- **Materials** are named by how they shade, not by the asset they are applied to (Section 6).
+- **Materials** are named by what they make and how they blend (Section 6).
 
 **Important:** Apart from the C++ class prefixes, these prefixes are conventions, not requirements imposed by Unreal Engine. Consistency within a project is more important than adopting a particular set of abbreviations.
 
@@ -80,7 +80,7 @@ The following table provides a recommended convention for common Unreal Engine a
 
 | Asset type | Prefix | Example |
 |:--|:--|:--|
-| Level (map) | `L_` * | `L_MainMenu` |
+| Level (map) | `Lvl_` * | `Lvl_MainMenu` |
 | C++ class | `A`, `U`, `F`, `E`, `I` | `APlayerCharacter` |
 | Blueprint | `BP_` | `BP_EnemyGoblin` |
 | Blueprint Actor Component | `AC_` | `AC_Health` |
@@ -96,8 +96,8 @@ The following table provides a recommended convention for common Unreal Engine a
 | Skeletal Mesh | `SK_` | `SK_Player` |
 | Skeleton | `SKEL_` | `SKEL_Player` |
 | Physics Asset | `PHYS_` | `PHYS_Player` |
-| Master Material | `MM_` * | `MM_Env_Stone_Opaque` |
-| Material Instance | `MI_` | `MI_Env_Stone_Opaque` |
+| Material | `MM_` * | `MM_Env_StoneWall_Opaque` |
+| Material Instance | `MI_` | `MI_Env_MossyStone_Opaque` |
 | Material Function | `MF_` * | `MF_UV_Triplanar` |
 | Material Parameter Collection | `MPC_` * | `MPC_Weather` |
 | Post Process Material | `PPM_` | `PPM_Outline` |
@@ -241,7 +241,7 @@ The shared name `Player` identifies the related assets.
 
 The prefixes and suffixes distinguish their individual purposes.
 
-Materials are the exception. The player's material is `MI_Char_Skin_Subsurface` or `MI_Char_PBR_Opaque`, named by how it shades (Section 6). It is linked to the player by being stored in the player's folder, for example `Characters/Player/Materials/`.
+Materials follow their own pattern (Section 6). The player's skin is `MI_Char_PlayerSkin_Subsurface`, named for what it makes, and it is stored with the other player assets in `Characters/Player/Materials/`.
 
 ### 5.1 Texture Descriptors
 
@@ -263,27 +263,23 @@ Textures keep the asset-based pattern because a texture set belongs to one asset
 
 ## 6. Materials
 
-Materials use a three-field pattern: **Domain**, **Surface**, and **Usage**.
+Materials use a three-field pattern: **Domain**, **Name** and **Usage**.
 
-- **Master Material:** `MM_<Domain>_<Surface>_<Usage>`
-- **Material Instance:** `MI_<Domain>_<Surface>_<Usage>`
+- **Material:** `MM_<Domain>_<Name>_<Usage>`
+- **Material Instance:** `MI_<Domain>_<Name>_<Usage>`
 
-A Material Instance normally shares the three fields of its parent Master Material.
+Use the `MM_` prefix for every material, whether it is a master built to be instanced or a material used once. One prefix means every material sorts together in the Content Browser and is found by the same search. Epic's published list uses `M_`, so expect `M_` in Fab packs and engine content.
 
-Do not add asset names, colours, seasons, or quality levels as extra fields. Store specific instances in folders named for the asset, and handle differences through parameters and child instances.
-
-Epic's published list uses `M_` for all materials. This project uses `MM_` for Master Materials, which are built to be instanced, and keeps `M_` for single-use materials that are never instanced.
+Every material and instance gets its own name. Two assets never share a name in different folders, because a search would then return results you cannot tell apart without opening them.
 
 | Unreal | Unity equivalent |
 |:--|:--|
-| `MM_` Master Material | `SG_` Shader Graph |
+| `MM_` Material | `SG_` Shader Graph |
 | `MI_` Material Instance | `M_` Material |
 | `MI_` child instance | `MV_` Material Variant |
 | `MF_` Material Function | `SGS_` Sub Graph |
 
 ### 6.1 Field Glossary
-
-Pick one value per field.
 
 **Domain** identifies where the material is used:
 
@@ -291,11 +287,17 @@ Pick one value per field.
 
 The Domain field is unrelated to the **Material Domain** setting in the Material Details panel. The two only coincide for `Decal` and `UI`.
 
-**Surface** identifies what the material represents:
+**Name** identifies what the material makes, in PascalCase. Choose the most useful of three kinds:
 
-`PBR` (generic), `Metal`, `Wood`, `Stone`, `Glass`, `Water`, `Skin`, `Cloth`, `Leaf`
+| Kind | Use it when | Examples |
+|:--|:--|:--|
+| Surface | The material reproduces a real surface | `Wood`, `PolishedSteel`, `StainedWood`, `MossyStoneFloor` |
+| Effect | The material produces a visual effect | `RefractiveGlass`, `PanningLightStrip`, `RadarSweep`, `Dissolve` |
+| Technique | The material exists to demonstrate or provide a technique | `HazardStripes`, `ORMPacked`, `ValueNoiseFBM`, `PBRMaster` |
 
-**Usage** identifies how the material shades:
+A master built to be instanced is named for its role, such as `PBRMaster`, and each instance is named for the surface it makes, never for its parent.
+
+**Usage** identifies how the material blends or shades:
 
 | Usage | Unreal setting |
 |:--|:--|
@@ -306,35 +308,41 @@ The Domain field is unrelated to the **Material Domain** setting in the Material
 | `Subsurface` | Shading Model: Subsurface or Subsurface Profile |
 | `Decal` | Material Domain: Deferred Decal |
 
+Other shading models, such as Clear Coat and Unlit, keep the Usage of their blend mode, usually `Opaque`.
+
 Post-process materials are not covered by this pattern. Use the `PPM_` prefix with a descriptive name, such as `PPM_Outline`.
 
 ### 6.2 Examples
 
-| Master Material | Material Instance |
+| Asset | Name |
 |:--|:--|
-| `MM_Env_PBR_Opaque` | `MI_Env_PBR_Opaque` |
-| `MM_Env_Stone_Opaque` | `MI_Env_Stone_Opaque` |
-| `MM_Foliage_Leaf_Masked` | `MI_Foliage_Leaf_Masked` |
-| `MM_Env_Water_Trans` | `MI_Env_Water_Trans` |
-| `MM_Char_Skin_Subsurface` | `MI_Char_Skin_Subsurface` |
-| `MM_Prop_Wood_Opaque` | `MI_Prop_Wood_Opaque` |
-| `MM_FX_PBR_Add` | `MI_FX_PBR_Add` |
+| A wood prop material | `MM_Prop_Wood_Opaque` |
+| A shared master with parameters | `MM_Prop_PBRMaster_Opaque` |
+| An instance of that master for polished steel | `MI_Prop_PolishedSteel_Opaque` |
+| A child instance of the polished steel with a heat tint | `MI_Prop_HeatedSteel_Opaque` |
+| A masked foliage card | `MM_Foliage_LeafCard_Masked` |
+| Translucent glass | `MM_Prop_RefractiveGlass_Trans` |
+| A procedural brick wall | `MM_Env_BrickWall_Opaque` |
+| An animated radar screen | `MM_FX_RadarSweep_Opaque` |
+| Candle wax | `MM_Prop_CandleWax_Subsurface` |
 
-Features such as glow, dissolve, or triplanar mapping are parameters or Material Functions inside the Master Material, not name fields. A glowing pickup is `MI_Prop_PBR_Opaque` with its `GlowAmount` parameter set, stored in the pickup's folder.
+Name the effect when it is what the material is for, as in `MM_FX_RadarSweep_Opaque`. Do not add parameter values to a name: a brighter radar is the same material with its `SweepSpeed` or colour changed in an instance, so it keeps the same Name field.
 
 ### 6.3 Instance Hierarchies
 
-- Create a Material Instance for each asset or variant rather than duplicating the Master Material. Instances share the compiled shader, so they are cheaper and update automatically when the master changes.
-- A child instance can parent another instance, for example a mossy stone instance parenting a generic stone instance. It keeps the parent's three fields. Store it in a folder named for the asset or variant, for example `Environments/Dungeon/Materials/Mossy/`.
-- Create a new Master Material only when the shading logic genuinely differs.
+- Create a Material Instance for each surface or variant rather than duplicating the master. Instances share the compiled shader, so they are cheaper and update automatically when the master changes.
+- Create an instance by right-clicking its parent and choosing **Create Material Instance**, which sets the parent for you, then rename it for the surface it makes.
+- A child instance can parent another instance, for example `MI_Env_MossyStone_Opaque` with `MI_Env_Stone_Opaque` as its parent. Give the child its own Name field, so the chain reads from general to specific.
+- Create a new master only when the shading logic genuinely differs.
 
 ### 6.4 Quick Check
 
 - Can you tell **where** it is used (Domain)?
-- Can you tell **what** it is (Surface)?
-- Can you tell **how** it shades (Usage)?
+- Can you tell **what** it makes (Name)?
+- Can you tell **how** it blends (Usage)?
+- Is the name unique in the project?
 
-If the answer to all three is yes, the name is good.
+If the answer to all four is yes, the name is good.
 
 ## 7. Material Parameters, Static Switches, and Functions
 
@@ -412,7 +420,7 @@ SM_Wall_Brick
 SM_Wall_Wood
 ```
 
-For materials, the Surface field already carries this distinction (`MI_Env_Stone_Opaque`, `MI_Env_Wood_Opaque`). Variants within the same surface are handled by child instances and folders (Section 6.3).
+For materials, the Name field carries this distinction (`MI_Env_Stone_Opaque`, `MI_Env_MossyStone_Opaque`). Variants of one surface are child instances with their own Name field (Section 6.3).
 
 ## 9. Asset Names and Actor Labels
 
@@ -440,21 +448,21 @@ For small projects, the following structure provides a useful starting point:
 
 ```text
 Content/
-└── ProjectName/
-    ├── Animations/
-    ├── Audio/
-    │   ├── Music/
-    │   └── SoundEffects/
-    ├── Blueprints/
-    ├── Data/            (Data Assets and Data Tables)
-    ├── Maps/
-    ├── Materials/
-    │   ├── Masters/
-    │   └── Functions/
-    ├── Meshes/
-    ├── Textures/
-    ├── UI/
-    └── VFX/
+  ProjectName/
+    Animations/
+    Audio/
+      Music/
+      SoundEffects/
+    Blueprints/
+    Data/            (Data Assets and Data Tables)
+    Maps/
+    Materials/
+      Masters/
+      Functions/
+    Meshes/
+    Textures/
+    UI/
+    VFX/
 ```
 
 For larger projects, consider grouping assets by gameplay system, character, or environment.
@@ -463,26 +471,26 @@ For example:
 
 ```text
 Content/
-└── ProjectName/
-    ├── Characters/
-    │   └── Player/
-    │       ├── Animations/
-    │       ├── Blueprints/
-    │       ├── Materials/
-    │       ├── Meshes/
-    │       └── Textures/
-    ├── Environments/
-    │   └── Dungeon/
-    │       ├── Materials/
-    │       ├── Meshes/
-    │       └── Textures/
-    ├── Core/
-    │   ├── Blueprints/
-    │   └── Data/
-    ├── Maps/
-    └── Materials/
-        ├── Masters/
-        └── Functions/
+  ProjectName/
+    Characters/
+      Player/
+        Animations/
+        Blueprints/
+        Materials/
+        Meshes/
+        Textures/
+    Environments/
+      Dungeon/
+        Materials/
+        Meshes/
+        Textures/
+    Core/
+      Blueprints/
+      Data/
+    Maps/
+    Materials/
+      Masters/
+      Functions/
 ```
 
 In this structure the folders carry the asset association that material names deliberately leave out. Master Materials and Material Functions sit in a shared folder because many assets use them.
@@ -500,8 +508,8 @@ Avoid creating unnecessarily deep folder hierarchies for small projects.
 | Moving or renaming assets leaves redirectors behind, which cause broken references when files are committed separately. | Right-click the folder and choose **Fix Up Redirectors** before committing. |
 | Renaming a C++ class breaks every Blueprint derived from it. | Add a class redirect to the `[CoreRedirects]` section of `DefaultEngine.ini` before renaming. |
 | Changes made to a Data Asset during Play In Editor persist after the session ends. | Treat Data Assets as read-only at runtime. Copy values into the Actor or component that needs to change them. |
-| Adding asset or variant names to material names, such as `MI_Env_Stone_Opaque_Mossy`. | Use a folder instead. |
-| Encoding features in material names, such as `MM_Prop_PBR_Opaque_Glow`. | Glow is a parameter, not a name field. |
+| Two materials with the same name in different folders, such as two `MM_Prop_PBR_Opaque`. | Give each its own Name field, such as `MM_Prop_Paint_Opaque` and `MM_Prop_ClearCoatPaint_Opaque`. |
+| Adding parameter values or extra fields to a name, such as `MM_Prop_Paint_Opaque_Red05`. | Keep values as parameters and set them in an instance. |
 | A material's Usage field no longer matches its Blend Mode or Shading Model. | Rename the material whenever these settings change. |
 | Confusing the Domain name field with the Material Domain setting. | The Domain field describes where the material is used. The setting describes what kind of material it is. |
 | Creating a Material Instance Dynamic every frame, or one per Actor for a single shared value. | Create each dynamic instance once and cache it. Use a Material Parameter Collection for global values, and Custom Primitive Data for per-Actor values. |
@@ -520,7 +528,7 @@ Before committing assets to version control, check the following.
 - [ ] Variants are clearly distinguished.
 - [ ] C++ classes carry the correct type prefix, and filenames match the class name without it.
 - [ ] Classes and Blueprints are named by role, not with a `Script` or `My` prefix or suffix.
-- [ ] Materials follow the Domain, Surface, Usage pattern.
+- [ ] Materials follow the Domain, Name, Usage pattern, and every material name is unique.
 - [ ] Material parameter names are set deliberately and contain no spaces.
 - [ ] Redirectors have been fixed up.
 - [ ] Assets are stored in appropriate folders inside the project folder.
@@ -536,7 +544,7 @@ Remember the following principles:
 2. Prefer descriptive names over generic or abbreviated names.
 3. Use prefixes to make asset types easier to identify.
 4. Give related assets a common base name.
-5. Name classes and Blueprints by role and materials by how they shade.
+5. Name classes and Blueprints by role, and materials by what they make and how they blend.
 6. Use meaningful descriptors and variant suffixes.
 7. Organise assets into folders that support the project's workflow.
 8. Follow established project conventions when working with an existing codebase.

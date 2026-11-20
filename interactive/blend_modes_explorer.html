@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Blend Modes Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Familjen+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column of three numbered stations (one pixel, whole sprite, draw order), then a reference table. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ee; --fg:#18202c; --muted:#596476; --line:#cfd6df;
+  --accent:#c2530a; --src:#a3249c; --dst:#2c68d4; --ok:#2a8f3b; --bad:#d03a3a; --code-bg:#f6f8fa;
+  --f-display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --surface:#191f28; --sunk:#0d1116; --fg:#e6eaf0; --muted:#97a2b2; --line:#2a333f;
+  --accent:#fb923c; --src:#e57be0; --dst:#5f97f2; --ok:#52c463; --bad:#f06464; --code-bg:#0f141a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --surface:#191f28; --sunk:#0d1116; --fg:#e6eaf0; --muted:#97a2b2; --line:#2a333f;
+  --accent:#fb923c; --src:#e57be0; --dst:#5f97f2; --ok:#52c463; --bad:#f06464; --code-bg:#0f141a; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(2rem,5vw,3.1rem);font-weight:700;letter-spacing:-0.02em}
+h2{font-size:1.65rem;font-weight:600;letter-spacing:-0.01em}
+h3{font-size:1.05rem;font-weight:600}
+p{margin:0;max-width:68ch}
+code,.mono{font-family:var(--f-mono);font-size:0.88em}
+.eyebrow{font-family:var(--f-mono);font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.srcc{color:var(--src);font-weight:700}.dstc{color:var(--dst);font-weight:700}.acc{color:var(--accent);font-weight:700}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+
+header{display:grid;gap:14px;padding-bottom:24px;border-bottom:1px solid var(--line)}
+.lede{font-size:1.1rem;color:var(--muted)}
+.conv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+.conv>div{background:var(--surface);padding:12px 14px;display:grid;gap:4px;align-content:start}
+.conv b{font-family:var(--f-mono);font-weight:500;font-size:0.95rem}
+.conv span{color:var(--muted);font-size:0.9rem}
+
+section.station{padding-block:40px 8px;display:grid;gap:18px}
+.station-head{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:baseline}
+.num{font-family:var(--f-display);font-weight:700;font-size:2.4rem;line-height:1;color:var(--line);grid-row:span 2}
+.station-head p{color:var(--muted);grid-column:2}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px;align-items:start}
+@media (max-width:840px){.split{grid-template-columns:minmax(0,1fr)}}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:10px;min-width:0}
+canvas{display:block;width:100%;height:auto;border-radius:4px}
+.hint{font-size:0.82rem;color:var(--muted)}
+.panel{display:grid;gap:16px;min-width:0}
+
+.ctrl{display:grid;grid-template-columns:7rem minmax(0,1fr) 3.6rem;align-items:center;gap:10px}
+.ctrl label{font-family:var(--f-mono);font-size:0.85rem}
+.ctrl output{font-family:var(--f-mono);font-size:0.85rem;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=color]{width:100%;height:30px;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface);cursor:pointer}
+
+.row{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+button,.seg label{font:inherit;font-size:0.85rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:4px;padding:5px 10px;cursor:pointer}
+button:hover,.seg label:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible,.seg input:focus-visible+label{outline:2px solid var(--dst);outline-offset:1px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{border-radius:0;margin-left:-1px}
+.seg label:first-of-type{border-radius:4px 0 0 4px;margin-left:0}
+.seg label:last-of-type{border-radius:0 4px 4px 0}
+.seg input:checked+label{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.lab{font-family:var(--f-mono);font-size:0.8rem;color:var(--muted)}
+
+.readout{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px;font-variant-numeric:tabular-nums;min-width:0}
+.readout .line{font-family:var(--f-mono);font-size:0.84rem;overflow-x:auto;white-space:nowrap}
+.readout .k{color:var(--muted)}
+
+/* Station 1: the frame buffer with the material's quad drawn over it */
+.fb{border-radius:6px;padding:14% 18%;border:1px solid var(--line)}
+.fb .quad{aspect-ratio:1.6/1;border-radius:4px;box-shadow:0 0 0 1px rgba(128,128,128,0.35)}
+.sw3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sw3>div{display:grid;gap:4px}
+.sw{height:44px;border-radius:4px;border:1px solid var(--line)}
+.sw3 b{font-family:var(--f-mono);font-weight:500;font-size:0.78rem}
+.sw3 span{font-family:var(--f-mono);font-size:0.74rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* Station 2: one card per mode */
+.grid6{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:6px;margin:0;min-width:0}
+.card b{font-family:var(--f-display);font-size:1rem}
+.card span{font-size:0.8rem;color:var(--muted)}
+.card code{font-size:0.74rem;color:var(--fg);overflow-x:auto;white-space:nowrap;display:block}
+
+.note{border-left:3px solid var(--line);padding:4px 0 4px 14px;color:var(--muted);font-size:0.95rem}
+.note strong{color:var(--fg)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:0.88rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-weight:500;font-size:0.75rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+td code{white-space:nowrap}
+.twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px}
+ul.pit{margin:0;padding-left:1.1rem;display:grid;gap:8px;max-width:72ch}
+details{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px}
+details+details{margin-top:8px}
+summary{cursor:pointer;font-weight:700}
+details p{margin-top:8px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="eyebrow">COMP I8015 3D Game Development &middot; Materials and HLSL</div>
+  <h1>Blend Modes Explorer</h1>
+  <p class="lede">A blend mode decides how the colour your material outputs is combined with the colour already on screen. Unreal and Unity use different names, but both set the same two numbers on the graphics card. Learn the equation once and you can read either engine.</p>
+  <div class="conv" aria-label="Terms used on this page">
+    <div><b><span class="srcc">src</span> source</b><span>The colour your material outputs for this pixel. Its alpha is the Opacity pin in Unreal and Base Map alpha in Unity.</span></div>
+    <div><b><span class="dstc">dst</span> destination</b><span>The colour already in the frame buffer at this pixel, from everything drawn earlier.</span></div>
+    <div><b>The blend equation</b><span><code>result = src &times; SrcFactor + dst &times; DstFactor</code>. A blend mode is a choice of the two factors.</span></div>
+    <div><b>Linear values, 0 to 1</b><span>Engines blend linear colour values before tone mapping. A result above 1 is kept on an HDR target and clamps to white on an LDR one.</span></div>
+  </div>
+</header>
+
+<!-- ===================== 1 ===================== -->
+<section class="station" id="pixel">
+  <div class="station-head"><span class="num">1</span><h2>One pixel, one equation</h2>
+    <p>Pick a mode, then change the two colours and the alpha. The readout shows the factors the mode selects and the sum for each channel.</p></div>
+  <div class="split">
+    <div class="stage">
+      <div class="fb" id="fb"><div class="quad" id="quad"></div></div>
+      <span class="hint">The outer area is the frame buffer. The inner rectangle is your material drawn over it.</span>
+      <div class="sw3">
+        <div><div class="sw" id="sw-d"></div><b class="dstc">dst</b><span id="tx-d"></span></div>
+        <div><div class="sw" id="sw-s"></div><b class="srcc">src</b><span id="tx-s"></span></div>
+        <div><div class="sw" id="sw-r"></div><b>result</b><span id="tx-r"></span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="readout" style="gap:10px">
+        <div class="seg" role="radiogroup" aria-label="Blend mode" id="seg-mode"></div>
+        <div class="ctrl"><label for="c-src" class="srcc">Source</label><input type="color" id="c-src" value="#f28c26"><span></span></div>
+        <div class="ctrl"><label for="s-a">Alpha</label><input type="range" id="s-a" min="0" max="1" step="0.01" value="0.6"><output id="o-a"></output></div>
+        <div class="ctrl" id="row-clip"><label for="s-clip">Clip value</label><input type="range" id="s-clip" min="0" max="1" step="0.01" value="0.33"><output id="o-clip"></output></div>
+        <div class="ctrl"><label for="c-dst" class="dstc">Destination</label><input type="color" id="c-dst" value="#265999"><span></span></div>
+      </div>
+      <div class="readout">
+        <div class="eyebrow" id="eq-name"></div>
+        <div class="line" id="eq-gen"></div>
+        <div class="line" id="eq-sf"></div><div class="line" id="eq-df"></div>
+        <div class="eyebrow" style="margin-top:6px">Per channel</div>
+        <div class="line" id="eq-r"></div><div class="line" id="eq-g"></div><div class="line" id="eq-b"></div>
+        <div class="line" id="eq-note"></div>
+      </div>
+      <p class="note" id="mode-note"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section class="station" id="sprite">
+  <div class="station-head"><span class="num">2</span><h2>The same texture in every mode</h2>
+    <p>One quad, one texture with an alpha channel, drawn six ways. Change the background: several modes depend on what is behind them far more than on the texture itself.</p></div>
+  <div class="readout" style="gap:10px">
+    <div class="row">
+      <span class="lab">Texture</span>
+      <div class="seg" role="radiogroup" aria-label="Texture">
+        <input type="radio" name="sp" id="sp-glow" value="glow" checked><label for="sp-glow">Fire glow</label>
+        <input type="radio" name="sp" id="sp-leaf" value="leaf"><label for="sp-leaf">Leaf</label>
+        <input type="radio" name="sp" id="sp-smoke" value="smoke"><label for="sp-smoke">Smoke</label>
+      </div>
+      <span class="lab">Background</span>
+      <div class="seg" role="radiogroup" aria-label="Background">
+        <input type="radio" name="bg" id="bg-dark" value="dark" checked><label for="bg-dark">Dark</label>
+        <input type="radio" name="bg" id="bg-bright" value="bright"><label for="bg-bright">Bright</label>
+        <input type="radio" name="bg" id="bg-bars" value="bars"><label for="bg-bars">Colour bars</label>
+      </div>
+    </div>
+    <div class="ctrl"><label for="s-op">Opacity</label><input type="range" id="s-op" min="0" max="1" step="0.01" value="1"><output id="o-op"></output></div>
+    <div class="ctrl"><label for="s-gclip">Clip value</label><input type="range" id="s-gclip" min="0.02" max="0.98" step="0.01" value="0.33"><output id="o-gclip"></output></div>
+  </div>
+  <div class="grid6" id="grid6"></div>
+  <div class="twocol">
+    <div class="note"><strong>Opaque shows the whole quad.</strong> It ignores alpha, so you see the texture's colour even where the artist meant it to be empty. Masked fixes that with a yes or no test per pixel, which is why its edge is hard. Lower the clip value and the shape grows.</div>
+    <div class="note"><strong>Switch to the bright background.</strong> Additive almost vanishes because the screen is already near 1. Modulate does the opposite: it can only darken, so it shows on bright surfaces and disappears on dark ones.</div>
+  </div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="station" id="order">
+  <div class="station-head"><span class="num">3</span><h2>Draw order</h2>
+    <p>Three overlapping discs are drawn in two different orders. If both pictures match, the engine can draw them in any order. If they differ, it must sort them every frame, and it can get the sort wrong.</p></div>
+  <div class="split">
+    <div class="stage">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="display:grid;gap:4px"><canvas id="cv-oa" width="200" height="200" aria-label="Discs drawn in the order red, green, blue"></canvas><span class="hint">Red, then green, then blue</span></div>
+        <div style="display:grid;gap:4px"><canvas id="cv-ob" width="200" height="200" aria-label="Discs drawn in the order blue, green, red"></canvas><span class="hint">Blue, then green, then red</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="readout" style="gap:10px">
+        <div class="seg" role="radiogroup" aria-label="Blend mode for the discs">
+          <input type="radio" name="om" id="om-trans" value="trans" checked><label for="om-trans">Translucent</label>
+          <input type="radio" name="om" id="om-add" value="add"><label for="om-add">Additive</label>
+          <input type="radio" name="om" id="om-mod" value="mod"><label for="om-mod">Modulate</label>
+          <input type="radio" name="om" id="om-pm" value="pm"><label for="om-pm">Premultiplied</label>
+        </div>
+        <div class="ctrl"><label for="s-oa">Alpha</label><input type="range" id="s-oa" min="0" max="1" step="0.01" value="0.6"><output id="o-oa"></output></div>
+      </div>
+      <div class="readout"><div class="eyebrow">Result</div><div class="line" id="o-verdict"></div><p class="hint" id="o-why"></p></div>
+      <p class="note"><strong>Opaque and Masked never have this problem.</strong> They write to the depth buffer, so the nearest surface wins whatever the draw order. The other modes do not write depth by default. The engine sorts them back to front by object, which is why two interlocking translucent meshes can pop in front of each other as the camera moves.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== Reference ===================== -->
+<section class="station" id="reference">
+  <div class="station-head"><span class="num" aria-hidden="true">&#8213;</span><h2>Unreal and Unity side by side</h2><p>In Unreal, set Blend Mode in the material's Details panel. In Unity's Universal Render Pipeline (URP), set Surface Type and Blending Mode on the material.</p></div>
+  <!-- VERIFY: (1) UE 5.7 Additive multiplies colour by Opacity. (2) UE 5.7 Modulate ignores Opacity; URP Multiply fades towards no effect as alpha falls. (3) URP Blend factors per Blending Mode. (4) URP Premultiply multiplies base colour by alpha in the shader. -->
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Unreal</th><th>Unity URP</th><th>Unity ShaderLab</th><th>Result</th><th>Writes depth</th><th>Use it for</th></tr></thead>
+      <tbody>
+        <tr><td>Opaque</td><td>Opaque</td><td><code>Blend One Zero</code></td><td><code>src</code></td><td class="ok">Yes</td><td>Walls, props, characters. The cheapest mode, so make it your default.</td></tr>
+        <tr><td>Masked</td><td>Opaque, with Alpha Clipping on</td><td><code>Blend One Zero</code> plus <code>clip()</code></td><td><code>src</code> or nothing</td><td class="ok">Yes</td><td>Foliage, fences, hair cards. Default clip value is 0.3333 in Unreal and 0.5 in Unity.</td></tr>
+        <tr><td>Translucent</td><td>Transparent, Alpha</td><td><code>Blend SrcAlpha OneMinusSrcAlpha</code></td><td><code>src &times; a + dst &times; (1 &minus; a)</code></td><td class="bad">No</td><td>Glass, water, smoke.</td></tr>
+        <tr><td>Additive</td><td>Transparent, Additive</td><td><code>Blend SrcAlpha One</code></td><td><code>src &times; a + dst</code></td><td class="bad">No</td><td>Fire, sparks, lasers, holograms. Anything that emits light.</td></tr>
+        <tr><td>Modulate</td><td>Transparent, Multiply</td><td><code>Blend DstColor Zero</code></td><td><code>src &times; dst</code></td><td class="bad">No</td><td>Stains, tinted glass, fake shadows. Unity also fades the effect out as alpha falls.</td></tr>
+        <tr><td>AlphaComposite (Premultiplied Alpha)</td><td>Transparent, Premultiply</td><td><code>Blend One OneMinusSrcAlpha</code></td><td><code>src + dst &times; (1 &minus; a)</code></td><td class="bad">No</td><td>Fire with smoke in one material, UI, glass that keeps its highlights. Unreal expects a texture whose colour is already multiplied by alpha. Unity multiplies the base colour for you.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note"><strong>Not shown.</strong> Unreal also has AlphaHoldout, which cuts a hole in the alpha of whatever is behind it. It is used for compositing, not for surfaces.</p>
+
+  <h2 style="margin-top:24px">Common pitfalls</h2>
+  <ul class="pit">
+    <li><strong>Using Translucent for foliage.</strong> Leaves need only a yes or no per pixel. Masked gives you depth writes, correct sorting and full lighting. Translucent gives you sorting errors and overdraw for no visible gain.</li>
+    <li><strong>Overdraw.</strong> Every translucent layer runs its pixel shader and blends, even when ten layers cover the same pixel. Opaque surfaces hidden behind others are skipped by the depth test. Large stacked smoke sprites are a classic frame-rate killer.</li>
+    <li><strong>Additive effects on bright scenes.</strong> An additive spark over a white sky adds to a value that is already at the top of the range. Test effects against both dark and bright backgrounds.</li>
+    <li><strong>Expecting Modulate to brighten.</strong> With colour values between 0 and 1, multiplying can only darken. White does nothing and black gives black.</li>
+    <li><strong>A straight-alpha texture in a premultiplied mode.</strong> The colour was never multiplied by alpha, so soft edges come out too bright and haloed. Either premultiply the texture or multiply colour by alpha in the material.</li>
+    <li><strong>Missing depth.</strong> Translucent surfaces do not write depth, so effects that read the depth buffer, such as depth of field and decals, treat them as if they were not there.</li>
+  </ul>
+
+  <h2 style="margin-top:24px">Check your understanding</h2>
+  <p class="hint">Predict first, then confirm with the stations above, then open the answer.</p>
+  <div>
+    <details><summary>In station 1, choose Premultiplied and set alpha to 0. Which other mode does it now match?</summary>
+      <p>Additive. DstFactor is 1 &minus; 0 = 1, so the result is src + dst. At alpha 1 the destination is removed and it matches Opaque. One material can therefore hold both a solid part and a glowing part.</p></details>
+    <details><summary>Which of the four modes in station 3 give the same picture in both orders, and why?</summary>
+      <p>Additive and Modulate. Addition and multiplication give the same answer in any order. Translucent and Premultiplied scale the destination by (1 &minus; a) at each step, so whichever disc is drawn last hides the most.</p></details>
+    <details><summary>You draw a Modulate material with a pure white source. What changes on screen?</summary>
+      <p>Nothing. Every channel of the destination is multiplied by 1. The pixel shader still ran, so you paid for a draw that had no effect.</p></details>
+    <details><summary>Why does the Masked leaf in station 2 have a hard edge while the Translucent leaf has a soft one?</summary>
+      <p>Masked compares alpha with the clip value and either keeps the pixel or discards it. There is no in-between. Translucent uses alpha as a weight, so a pixel with alpha 0.5 is half leaf and half background.</p></details>
+    <details><summary>A Translucent material has alpha 1 everywhere. Is it now as cheap as Opaque?</summary>
+      <p>No. It still skips the depth write, still has to be sorted, and is still shaded in the translucency pass. If alpha is always 1, switch the material to Opaque.</p></details>
+  </div>
+</section>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const $=s=>document.querySelector(s);
+const MINUS="\u2212",TIMES="\u00d7";
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const sat=x=>clamp(x,0,1);
+const sstep=(a,b,x)=>{const t=sat((x-a)/(b-a));return t*t*(3-2*t);};
+const f=x=>x.toFixed(2).replace("-",MINUS);
+const hex2=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
+const css=c=>`rgb(${c.map(v=>Math.round(sat(v)*255)).join(",")})`;
+
+const MODES=[
+  {k:"opaque",ue:"Opaque",un:"Opaque",eq:"src",sf:"One",df:"Zero"},
+  {k:"masked",ue:"Masked",un:"Alpha Clipping",eq:"a >= clip ? src : dst",sf:"One",df:"Zero"},
+  {k:"trans",ue:"Translucent",un:"Alpha",eq:"src * a + dst * (1 - a)",sf:"SrcAlpha",df:"OneMinusSrcAlpha"},
+  {k:"add",ue:"Additive",un:"Additive",eq:"src * a + dst",sf:"SrcAlpha",df:"One"},
+  {k:"mod",ue:"Modulate",un:"Multiply",eq:"src * dst",sf:"DstColor",df:"Zero"},
+  {k:"pm",ue:"AlphaComposite",un:"Premultiply",eq:"src + dst * (1 - a)",sf:"One",df:"OneMinusSrcAlpha"}];
+const NOTES={
+  opaque:"<strong>Opaque</strong> replaces the destination. Alpha is ignored, so the alpha slider does nothing here.",
+  masked:"<strong>Masked</strong> is Opaque with a test. If alpha is below the clip value the pixel is discarded and the destination is left alone. Drag alpha across the clip value and watch the result jump.",
+  trans:"<strong>Translucent</strong> is a weighted average. Alpha is the share the source gets, and the destination gets the rest, so the result can never be brighter than the brighter of the two.",
+  add:"<strong>Additive</strong> adds light and never removes any. A black source changes nothing. Bright sources over bright destinations go above 1.",
+  mod:"<strong>Modulate</strong> multiplies. The source acts as a colour filter over the destination. Alpha is not in the equation.",
+  pm:"<strong>Premultiplied</strong> treats the source colour as already multiplied by alpha, so it is added at full strength. Alpha only controls how much destination survives. Try alpha 0, then alpha 1."};
+
+/* src is the colour as authored; for "pm" it is taken as already premultiplied */
+function blend(k,s,a,d,clip){switch(k){
+  case "opaque":return s.slice();
+  case "masked":return a>=clip?s.slice():d.slice();
+  case "trans":return s.map((v,i)=>v*a+d[i]*(1-a));
+  case "add":return s.map((v,i)=>v*a+d[i]);
+  case "mod":return s.map((v,i)=>v*d[i]);
+  default:return s.map((v,i)=>v+d[i]*(1-a));}}
+
+/* ---------------- station 1 ---------------- */
+const S={mode:"trans",src:hex2("#f28c26"),dst:hex2("#265999"),a:0.6,clip:0.33,sp:"glow",bg:"dark",op:1,gclip:0.33,om:"trans",oa:0.6};
+$("#seg-mode").innerHTML=MODES.map(m=>`<input type="radio" name="mode" id="m-${m.k}" value="${m.k}"${m.k===S.mode?" checked":""}><label for="m-${m.k}">${m.ue}</label>`).join("");
+function update1(){
+  const m=MODES.find(x=>x.k===S.mode),r=blend(S.mode,S.src,S.a,S.dst,S.clip),a=S.a;
+  $("#fb").style.background=css(S.dst);$("#quad").style.background=css(r);
+  $("#sw-d").style.background=css(S.dst);$("#sw-s").style.background=css(S.src);$("#sw-r").style.background=css(r);
+  const t3=c=>c.map(f).join(", ");
+  $("#tx-d").textContent=t3(S.dst);$("#tx-s").textContent=t3(S.src)+"  a "+f(a);$("#tx-r").textContent=t3(r);
+  $("#o-a").textContent=f(a);$("#o-clip").textContent=f(S.clip);$("#row-clip").hidden=S.mode!=="masked";
+  $("#eq-name").textContent=`${m.ue} (Unreal) / ${m.un} (Unity)`;
+  $("#eq-gen").innerHTML=`result = <span class="srcc">src</span> ${TIMES} SrcFactor + <span class="dstc">dst</span> ${TIMES} DstFactor`;
+  const pass=a>=S.clip;
+  let sf,df,sfv,dfv;
+  if(S.mode==="masked"){sf=pass?"One":"Zero";df=pass?"Zero":"One";}else{sf=m.sf;df=m.df;}
+  const val={One:1,Zero:0,SrcAlpha:a,OneMinusSrcAlpha:1-a};
+  sfv=sf==="DstColor"?"dst, per channel":f(val[sf]);dfv=f(val[df]);
+  $("#eq-sf").innerHTML=`SrcFactor = ${sf} = ${sfv}`;$("#eq-df").innerHTML=`DstFactor = ${df} = ${dfv}`;
+  ["r","g","b"].forEach((c,i)=>{const sfn=sf==="DstColor"?S.dst[i]:val[sf],over=r[i]>1.0005;
+    $("#eq-"+c).innerHTML=`${c.toUpperCase()} = <span class="srcc">${f(S.src[i])}</span> ${TIMES} ${f(sfn)} + <span class="dstc">${f(S.dst[i])}</span> ${TIMES} ${f(val[df])} = <strong>${f(r[i])}</strong>`+(over?` <span class="acc">above 1</span>`:"");});
+  $("#eq-note").innerHTML=S.mode==="masked"?`<span class="k">alpha ${f(a)} ${pass?">=":"<"} clip ${f(S.clip)}: pixel ${pass?"kept":"discarded"}</span>`:
+    r.some(v=>v>1.0005)?`<span class="acc">Values above 1 show as full brightness here. On an HDR target they feed bloom.</span>`:"";
+  $("#mode-note").innerHTML=NOTES[S.mode];
+}
+document.querySelectorAll("input[name=mode]").forEach(i=>i.addEventListener("change",()=>{S.mode=document.querySelector("input[name=mode]:checked").value;update1();}));
+$("#c-src").addEventListener("input",e=>{S.src=hex2(e.target.value);update1();});
+$("#c-dst").addEventListener("input",e=>{S.dst=hex2(e.target.value);update1();});
+$("#s-a").addEventListener("input",e=>{S.a=+e.target.value;update1();});
+$("#s-clip").addEventListener("input",e=>{S.clip=+e.target.value;update1();});
+
+/* ---------------- station 2 ---------------- */
+const N=180;
+$("#grid6").innerHTML=MODES.map(m=>`<figure class="card"><canvas id="g-${m.k}" width="${N}" height="${N}" style="aspect-ratio:1/1" aria-label="${m.ue} blend mode"></canvas><b>${m.ue}</b><span>Unity: ${m.un}</span><code>${m.eq}</code></figure>`).join("");
+function bgAt(x,y){const chk=((Math.floor(x*8)+Math.floor(y*8))&1)?0.03:0;
+  if(S.bg==="dark")return [0.05+0.05*y+chk,0.07+0.06*y+chk,0.13+0.1*(1-y)+chk];
+  if(S.bg==="bright")return [0.78+0.16*y-chk,0.86+0.04*y-chk,0.95-0.15*y-chk];
+  const i=Math.min(5,Math.floor(x*6)),br=1-y*0.8,H=[[1,0.15,0.15],[1,0.85,0.1],[0.15,0.8,0.25],[0.1,0.8,0.9],[0.2,0.3,1],[1,1,1]][i];return [H[0]*br,H[1]*br,H[2]*br];}
+/* texture: colour is defined over the whole quad, as in a real texture; "add" is extra light used only by the premultiplied mode */
+function texAt(u,v){const r=Math.hypot(u,v);
+  if(S.sp==="glow"){const a=Math.pow(sstep(0.75,0.05,r),1.4),h=sstep(1,0.25,r)*(1-a)*0.7;return {c:[1,0.5+0.4*a,0.12+0.5*a*a],a,add:[h,h*0.42,h*0.08]};}
+  if(S.sp==="leaf"){const cs=Math.cos(0.5),sn=Math.sin(0.5),x=u*cs-v*sn,y=u*sn+v*cs,d=(x/0.42)*(x/0.42)+(y/0.86)*(y/0.86);
+    const vein=0.82+0.18*Math.cos(y*22-Math.abs(x)*30),mid=Math.abs(x)<0.02?0.75:1;return {c:[0.2*vein*mid,0.56*vein*mid,0.14*vein*mid],a:sstep(1.25,0.8,d),add:[0,0,0]};}
+  const n=0.6+0.4*Math.sin(u*5.3+1)*Math.cos(v*4.1-0.5)+0.15*Math.sin(u*11-v*9);return {c:[0.62,0.62,0.66],a:sat(sstep(0.95,0.15,r)*n),add:[0,0,0]};}
+function update2(){$("#o-op").textContent=f(S.op);$("#o-gclip").textContent=f(S.gclip);
+  const imgs=MODES.map(m=>{const ctx=$("#g-"+m.k).getContext("2d");return {m,ctx,img:ctx.createImageData(N,N)};});
+  for(let py=0;py<N;py++)for(let px=0;px<N;px++){const x=(px+0.5)/N,y=(py+0.5)/N,d=bgAt(x,y),u=(x-0.5)/0.4,v=(y-0.5)/0.4,inq=Math.abs(u)<=1&&Math.abs(v)<=1,o=(py*N+px)*4;
+    const t=inq?texAt(u,v):null;
+    for(const g of imgs){let r=d;
+      if(inq){const k=g.m.k;
+        if(k==="opaque")r=t.c;else if(k==="masked")r=t.a>=S.gclip?t.c:d;
+        else if(k==="pm"){const a=t.a*S.op;r=blend("pm",t.c.map((c,i)=>(c*t.a+t.add[i])*S.op),a,d,0);}
+        else r=blend(k,t.c,t.a*S.op,d,0);}
+      const D=g.img.data;D[o]=sat(r[0])*255;D[o+1]=sat(r[1])*255;D[o+2]=sat(r[2])*255;D[o+3]=255;}}
+  for(const g of imgs)g.ctx.putImageData(g.img,0,0);}
+document.querySelectorAll("input[name=sp]").forEach(i=>i.addEventListener("change",()=>{S.sp=document.querySelector("input[name=sp]:checked").value;update2();}));
+document.querySelectorAll("input[name=bg]").forEach(i=>i.addEventListener("change",()=>{S.bg=document.querySelector("input[name=bg]:checked").value;update2();}));
+$("#s-op").addEventListener("input",e=>{S.op=+e.target.value;update2();});
+$("#s-gclip").addEventListener("input",e=>{S.gclip=+e.target.value;update2();});
+
+/* ---------------- station 3 ---------------- */
+const DISC=[[0.92,0.2,0.2],[0.2,0.8,0.3],[0.22,0.38,0.96]].map((c,i)=>{const an=-Math.PI/2+i*Math.PI*2/3;return {c,x:0.5+0.17*Math.cos(an),y:0.52+0.17*Math.sin(an)};});
+const WHY={
+  trans:"Each new disc scales what is under it by (1 "+MINUS+" a). The last disc drawn always shows most strongly, so the order changes the picture. At alpha 0 nothing is drawn, so both match.",
+  add:"The result is the destination plus every disc. A sum is the same in any order, so additive effects never need sorting.",
+  mod:"The result is the destination multiplied by every disc. A product is the same in any order.",
+  pm:"Like Translucent, each disc scales the destination by (1 "+MINUS+" a) before adding itself, so the order matters."};
+function drawOrder(cv,order){const M=cv.width,ctx=cv.getContext("2d"),img=ctx.createImageData(M,M),D=img.data;
+  for(let py=0;py<M;py++)for(let px=0;px<M;px++){const x=(px+0.5)/M,y=(py+0.5)/M;let d=[0.72,0.72,0.72];
+    for(const i of order){const q=DISC[i];if(Math.hypot(x-q.x,y-q.y)>0.27)continue;
+      d=S.om==="pm"?blend("pm",q.c.map(c=>c*S.oa),S.oa,d,0):S.om==="mod"?blend("mod",q.c.map(c=>0.35+0.65*c),1,d,0):blend(S.om,q.c,S.oa,d,0);}
+    const o=(py*M+px)*4;D[o]=sat(d[0])*255;D[o+1]=sat(d[1])*255;D[o+2]=sat(d[2])*255;D[o+3]=255;}
+  ctx.putImageData(img,0,0);return D;}
+function update3(){$("#o-oa").textContent=f(S.oa);$("#s-oa").disabled=S.om==="mod";
+  const A=drawOrder($("#cv-oa"),[0,1,2]),B=drawOrder($("#cv-ob"),[2,1,0]);let mx=0;for(let i=0;i<A.length;i++)mx=Math.max(mx,Math.abs(A[i]-B[i]));
+  $("#o-verdict").innerHTML=mx<=1?`<strong class="ok">Identical.</strong> Draw order does not matter.`:`<strong class="bad">Different.</strong> Draw order matters, so the engine must sort.`;
+  $("#o-why").textContent=WHY[S.om]+(S.om==="mod"?" Alpha is not used by this mode.":"");}
+document.querySelectorAll("input[name=om]").forEach(i=>i.addEventListener("change",()=>{S.om=document.querySelector("input[name=om]:checked").value;update3();}));
+$("#s-oa").addEventListener("input",e=>{S.oa=+e.target.value;update3();});
+
+update1();update2();update3();
+})();
+</script>
+</body>
+</html>

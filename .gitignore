@@ -7,6 +7,9 @@ unreal/Build/
 unreal/Plugins/**/Binaries/
 unreal/Plugins/**/Intermediate/
 
+# Lecturer-only demo content (not for students)
+unreal/Content/GD/Lecturer/
+
 # IDE and solution files (regenerated from the .uproject)
 unreal/.vs/
 unreal/.vscode/
@@ -28,3 +31,9 @@ _freeze/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Unreal MCP plugins and servers
+unreal/Plugins/*MCP*/
+unreal/Plugins/*Mcp*/
+unreal/Plugins/*mcp*/
+**/unreal-mcp/

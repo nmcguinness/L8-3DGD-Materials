@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<!--
+CONTROL WIRING TABLE
+control id            | event              | handler            | views affected
+----------------------|--------------------|--------------------|------------------------------------------------
+a-colour-* (5 radios) | change             | onPresetChange     | A1 signal, A2 image, A3 spectrum, beta label, readouts
+a-beta                | input              | onBetaInput        | A1, A2, A3, beta label, readouts
+a-seed                | change             | onSeedChangeA      | A1, A2, A3, readouts
+a-randomise           | click              | onRandomiseA       | a-seed value, A1, A2, A3, readouts
+a-res                 | change             | onResolutionChange | A2, A3, readouts
+a-normalise           | change             | onNormaliseChange  | A1, A2, readouts
+a-listen              | click              | onListen           | audio status readout (plays 2 s of audio)
+a-volume              | input              | onVolume           | volume value label, live gain of playing audio
+a-stop                | click              | onStop             | audio status readout
+a-image               | mousemove          | onHoverA           | A2 hover readout
+b-base-* (2 radios)   | change             | onBaseChange       | B1 image, B2 octave strip, B3 cross-section, readouts
+b-octaves             | input              | onOctavesInput     | B1, B2, B3, readouts
+b-scale               | input              | onScaleInput       | B1, B2, B3, readouts
+b-lacunarity          | input              | onLacunarityInput  | B1, B2, B3, readouts
+b-gain                | input              | onGainInput        | B1, B2 captions, B3, readouts
+b-mode-* (3 radios)   | change             | onModeChange       | B1, B3, readouts
+b-seed                | change             | onSeedChangeB      | B1, B2, B3
+b-randomise           | click              | onRandomiseB       | b-seed value, B1, B2, B3
+b-show-octaves        | change             | onShowOctaves      | B3
+b-row                 | input              | onRowInput         | B1 row line, B3
+b-image               | pointerdown/move   | onRowDrag          | b-row value, B1 row line, B3
+b-image               | mousemove          | onHoverB           | B1 hover readout
+b-mute-N (per octave) | click              | onMuteToggle       | B1, B2 state, B3, readouts
+b-solo-N (per octave) | click              | onSoloToggle       | B1, B2 state, B3, readouts
+b-reset               | click              | onResetB           | all Demo B controls and views
+selftest-run          | click              | runSelfTest        | self-test results list
+(page URL #selftest)  | load               | runSelfTest        | self-test results list
+-->
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noise Types and Octaves</title>
+<style>
+:root {
+  --bg: #f6f6f4; --fg: #1c1d20; --muted: #55575e; --panel: #ffffff; --line: #d4d5d9;
+  --accent: #0a5fbf; --focus: #c26a00; --code: #eceef2; --plot: #1c1d20; --faint: rgba(10,95,191,0.35);
+  --warn: #9a3412;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417; --fg: #e7e7ea; --muted: #a4a6ae; --panel: #1c1e22; --line: #34373d;
+    --accent: #72b2ff; --focus: #f3b04a; --code: #262930; --plot: #e7e7ea; --faint: rgba(114,178,255,0.4);
+    --warn: #fdba74;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 17px; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+.page { max-width: 1320px; margin: 0 auto; padding: 24px 20px 32px; }
+h1 { font-size: 1.9rem; margin: 0 0 6px; }
+h2 { font-size: 1.35rem; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin: 22px 0 6px; }
+p, li { max-width: 80ch; }
+.lead { color: var(--muted); margin-top: 0; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 4px; font-size: 0.95rem; }
+th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+.framing { font-size: 1.15rem; font-weight: 600; border-left: 4px solid var(--accent); padding: 6px 0 6px 14px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Demo layout: views beside one control panel on wide screens, below on narrow ones */
+.demo { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+@media (max-width: 1000px) { .demo { grid-template-columns: 1fr; } }
+.views { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .views { grid-template-columns: 1fr; } }
+.wide { grid-column: 1 / -1; }
+figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+figcaption { font-weight: 600; margin-bottom: 6px; }
+.view-canvas { display: block; width: 100%; }
+.img-canvas { display: block; width: 100%; max-width: 360px; aspect-ratio: 1 / 1; image-rendering: pixelated; margin: 0 auto; cursor: crosshair; }
+.plot { height: 220px; }
+.plot.tall { height: 300px; }
+.desc, .hover { font-size: 0.85rem; color: var(--muted); margin: 6px 0 0; }
+.hover { font-variant-numeric: tabular-nums; min-height: 1.3em; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.panel fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 12px; padding: 8px 10px 10px; }
+.panel legend { font-weight: 600; padding: 0 4px; }
+.ctl { margin: 0 0 10px; }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; }
+.ctl output, .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.hint { color: var(--muted); font-size: 0.82rem; margin: 2px 0 0; }
+.radios label { display: block; margin: 2px 0; }
+input[type=range], select, input[type=number] { width: 100%; font: inherit; }
+input, select, button { accent-color: var(--accent); }
+button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--code); color: var(--fg); cursor: pointer; }
+.row-inline { display: flex; gap: 8px; align-items: center; }
+.row-inline input[type=number] { flex: 1; }
+.readout { margin: 10px 0 0; padding: 8px 10px; background: var(--code); border-radius: 6px; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.readout p { margin: 2px 0; }
+.warn { color: var(--warn); font-weight: 600; }
+.strip { display: flex; flex-wrap: wrap; gap: 10px; }
+.octave { display: flex; flex-direction: column; align-items: center; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.thumb { padding: 2px; border-radius: 6px; background: var(--panel); }
+.thumb canvas { display: block; width: 76px; height: 76px; image-rendering: pixelated; }
+.thumb[aria-pressed=true] canvas { opacity: 0.25; }
+.solo { margin-top: 3px; padding: 1px 8px; font-size: 0.78rem; }
+.solo[aria-pressed=true] { background: var(--accent); color: var(--panel); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.9rem; }
+#selftest-results { list-style: none; padding: 0; margin: 8px 0 0; columns: 2 280px; font-size: 0.85rem; }
+#selftest-results li { break-inside: avoid; }
+.pass { color: #15803d; } .fail { color: #b91c1c; }
+@media (prefers-color-scheme: dark) { .pass { color: #4ade80; } .fail { color: #f87171; } }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header>
+  <h1>Noise Types and Octaves</h1>
+  <p class="lead">How the balance of large and small detail in a noise decides whether it looks like static, clouds or hills, and how to build and tune that balance in a material.</p>
+</header>
+
+<section aria-labelledby="h1s">
+  <h2 id="h1s">1. Framing Question</h2>
+  <p class="framing">Why does some noise look like TV static, some like clouds, and some like rolling hills - and how do we choose?</p>
+  <p>All three are random, so randomness is not what separates them. What separates them is how much of the variation happens over large distances and how much over small ones. Once you can see and set that balance, choosing a noise for rock, fog, terrain or dithering becomes a decision with a reason behind it.</p>
+</section>
+
+<section aria-labelledby="h2s">
+  <h2 id="h2s">2. What You Will Learn</h2>
+  <table>
+    <thead><tr><th scope="col">Outcome</th><th scope="col">Assessment verb</th></tr></thead>
+    <tbody>
+      <tr><td>How a noise's power spectrum decides its look, from white to violet</td><td>Explain</td></tr>
+      <tr><td>Value noise and gradient noise, and white, pink, brown and blue noise</td><td>Compare</td></tr>
+      <tr><td>A noise colour or fBm variant for a given surface or effect</td><td>Select</td></tr>
+      <tr><td>Octaves, lacunarity and gain to reach a target look without aliasing</td><td>Tune</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h3s">
+  <h2 id="h3s">3. Interactive Demo A - Noise Colours</h2>
+  <p>Every colour below comes from one algorithm: give every frequency a random phase, scale its amplitude by a power of the frequency, and convert back with an inverse FFT. Only the exponent changes.</p>
+  <div class="demo">
+    <div class="views">
+      <figure class="wide">
+        <figcaption id="a-signal-title">A1. 1D signal, 512 samples</figcaption>
+        <canvas id="a-signal" class="view-canvas plot" role="img" aria-labelledby="a-signal-title" aria-describedby="a-signal-desc"></canvas>
+        <p class="desc" id="a-signal-desc">Line graph of the signal.</p>
+      </figure>
+      <figure>
+        <figcaption id="a-image-title">A2. 2D noise image</figcaption>
+        <canvas id="a-image" class="img-canvas" width="256" height="256" role="img" aria-labelledby="a-image-title" aria-describedby="a-image-desc"></canvas>
+        <p class="desc" id="a-image-desc">Greyscale noise image.</p>
+        <p class="hover" id="a-hover" aria-hidden="true">Hover over the image to read values.</p>
+      </figure>
+      <figure>
+        <figcaption id="a-spectrum-title">A3. Power spectrum (log-log)</figcaption>
+        <canvas id="a-spectrum" class="view-canvas plot tall" role="img" aria-labelledby="a-spectrum-title" aria-describedby="a-spectrum-desc"></canvas>
+        <p class="desc" id="a-spectrum-desc">Radially averaged power against frequency.</p>
+      </figure>
+    </div>
+
+    <form class="panel" id="a-panel" onsubmit="return false">
+      <fieldset class="radios">
+        <legend>Noise colour</legend>
+        <label><input type="radio" name="a-colour" id="a-colour-white" value="0" checked> White (beta 0)</label>
+        <label><input type="radio" name="a-colour" id="a-colour-pink" value="-1"> Pink (beta -1)</label>
+        <label><input type="radio" name="a-colour" id="a-colour-brown" value="-2"> Brown (beta -2)</label>
+        <label><input type="radio" name="a-colour" id="a-colour-blue" value="1"> Blue (beta +1)</label>
+        <label><input type="radio" name="a-colour" id="a-colour-violet" value="2"> Violet (beta +2)</label>
+        <p class="hint">Presets set the spectral exponent below.</p>
+      </fieldset>
+      <div class="ctl">
+        <label for="a-beta"><span>Spectral exponent beta</span><output id="a-beta-val" for="a-beta">0.0</output></label>
+        <input type="range" id="a-beta" min="-2" max="2" step="0.1" value="0">
+        <p class="hint" id="a-beta-name">Nearest colour: white. Power follows f to the power beta.</p>
+      </div>
+      <div class="ctl">
+        <label for="a-seed"><span>Seed</span><output id="a-seed-val" for="a-seed">1</output></label>
+        <div class="row-inline"><input type="number" id="a-seed" min="0" max="999999" step="1" value="1"><button type="button" id="a-randomise">Randomise</button></div>
+        <p class="hint">The same seed always gives the same noise.</p>
+      </div>
+      <div class="ctl">
+        <label for="a-res"><span>Image resolution</span><output id="a-res-val" for="a-res">256</output></label>
+        <select id="a-res"><option value="128">128 x 128</option><option value="256" selected>256 x 256</option><option value="512">512 x 512</option></select>
+        <p class="hint">Higher resolution adds higher frequencies to the spectrum.</p>
+      </div>
+      <div class="ctl">
+        <label for="a-normalise"><span>Normalise contrast to 0-1</span><output id="a-normalise-val" for="a-normalise">on</output></label>
+        <input type="checkbox" id="a-normalise" checked>
+        <p class="hint">Off shows raw values around 0.5, clipped, so colours differ in contrast.</p>
+      </div>
+      <fieldset>
+        <legend>Listen</legend>
+        <div class="row-inline"><button type="button" id="a-listen">Listen (2 s)</button><button type="button" id="a-stop">Stop</button></div>
+        <div class="ctl" style="margin-top:8px">
+          <label for="a-volume"><span>Volume</span><output id="a-volume-val" for="a-volume">0.20</output></label>
+          <input type="range" id="a-volume" min="0" max="1" step="0.05" value="0.2">
+          <p class="hint" id="a-audio-status">Stopped. Audio plays only when you press Listen.</p>
+        </div>
+      </fieldset>
+      <div class="readout" id="a-readout">
+        <p id="a-read-slope">Measured slope: -</p>
+        <p id="a-read-range">Raw range: -</p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section aria-labelledby="h4s">
+  <h2 id="h4s">4. Interactive Demo B - Octaves and fBm</h2>
+  <p>Fractal Brownian motion adds several copies of one noise, each at a higher frequency and a lower amplitude. Click an octave thumbnail to mute it, or use Solo to see one octave on its own. Drag the line on the image, or use the Row slider, to choose the cross-section.</p>
+  <div class="demo">
+    <div class="views">
+      <figure>
+        <figcaption id="b-image-title">B1. fBm result, 256 x 256</figcaption>
+        <canvas id="b-image" class="img-canvas" width="256" height="256" role="img" aria-labelledby="b-image-title" aria-describedby="b-image-desc"></canvas>
+        <p class="desc" id="b-image-desc">Greyscale fBm image.</p>
+        <p class="hover" id="b-hover" aria-hidden="true">Hover over the image to read values.</p>
+      </figure>
+      <figure>
+        <figcaption id="b-section-title">B3. Cross-section along the selected row</figcaption>
+        <canvas id="b-section" class="view-canvas plot tall" role="img" aria-labelledby="b-section-title" aria-describedby="b-section-desc"></canvas>
+        <p class="desc" id="b-section-desc">Line graph of one row of the image.</p>
+      </figure>
+      <figure class="wide">
+        <figcaption>B2. Individual octaves</figcaption>
+        <div class="strip" id="b-strip" role="group" aria-label="Octave thumbnails. Each thumbnail button mutes its octave; each Solo button shows only that octave."></div>
+        <p class="desc">Each thumbnail shows one octave's raw noise in the top-left 64 x 64 pixels of the image, at full resolution. f is cycles per image width; a is the amplitude it is added with.</p>
+      </figure>
+    </div>
+
+    <form class="panel" id="b-panel" onsubmit="return false">
+      <fieldset class="radios">
+        <legend>Base noise</legend>
+        <label><input type="radio" name="b-base" id="b-base-value" value="value" checked> Value noise</label>
+        <label><input type="radio" name="b-base" id="b-base-gradient" value="gradient"> Gradient (Perlin) noise</label>
+        <p class="hint">Gradient noise hides its grid better than value noise.</p>
+      </fieldset>
+      <div class="ctl">
+        <label for="b-octaves"><span>Octaves</span><output id="b-octaves-val" for="b-octaves">5</output></label>
+        <input type="range" id="b-octaves" min="1" max="8" step="1" value="5">
+        <p class="hint">Each octave adds finer detail and costs another noise evaluation.</p>
+      </div>
+      <div class="ctl">
+        <label for="b-scale"><span>Base frequency</span><output id="b-scale-val" for="b-scale">4.0</output></label>
+        <input type="range" id="b-scale" min="1" max="16" step="0.5" value="4">
+        <p class="hint">Cycles across the image for the first octave.</p>
+      </div>
+      <div class="ctl">
+        <label for="b-lacunarity"><span>Lacunarity</span><output id="b-lacunarity-val" for="b-lacunarity">2.00</output></label>
+        <input type="range" id="b-lacunarity" min="1.5" max="3" step="0.05" value="2">
+        <p class="hint">Frequency multiplier from one octave to the next.</p>
+      </div>
+      <div class="ctl">
+        <label for="b-gain"><span>Gain (persistence)</span><output id="b-gain-val" for="b-gain">0.50</output></label>
+        <input type="range" id="b-gain" min="0.2" max="0.8" step="0.05" value="0.5">
+        <p class="hint">Amplitude multiplier from one octave to the next.</p>
+      </div>
+      <fieldset class="radios">
+        <legend>Mode</legend>
+        <label><input type="radio" name="b-mode" id="b-mode-fbm" value="fbm" checked> Standard fBm</label>
+        <label><input type="radio" name="b-mode" id="b-mode-turbulence" value="turbulence"> Turbulence (absolute value)</label>
+        <label><input type="radio" name="b-mode" id="b-mode-ridged" value="ridged"> Ridged</label>
+        <p class="hint">Turbulence folds each octave; ridged turns the folds into sharp crests.</p>
+      </fieldset>
+      <div class="ctl">
+        <label for="b-seed"><span>Seed</span><output id="b-seed-val" for="b-seed">1</output></label>
+        <div class="row-inline"><input type="number" id="b-seed" min="0" max="999999" step="1" value="1"><button type="button" id="b-randomise">Randomise</button></div>
+        <p class="hint">Changes the lattice of random values and gradients.</p>
+      </div>
+      <div class="ctl">
+        <label for="b-row"><span>Row</span><output id="b-row-val" for="b-row">128</output></label>
+        <input type="range" id="b-row" min="0" max="255" step="1" value="128">
+        <p class="hint">The image row shown in the cross-section.</p>
+      </div>
+      <div class="ctl">
+        <label for="b-show-octaves"><span>Show octaves on cross-section</span><output id="b-show-octaves-val" for="b-show-octaves">off</output></label>
+        <input type="checkbox" id="b-show-octaves">
+        <p class="hint">Draws each octave's contribution as a faint line.</p>
+      </div>
+      <button type="button" id="b-reset">Reset to defaults</button>
+      <div class="readout" id="b-readout">
+        <p id="b-read-sum">Amplitude sum: -</p>
+        <p id="b-read-freq">Highest octave: -</p>
+        <p id="b-read-warn" class="warn" hidden></p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section aria-labelledby="h5s">
+  <h2 id="h5s">5. Core Ideas</h2>
+  <h3>5.1 Random versus coherent noise</h3>
+  <p><strong>Random noise</strong> gives every sample an independent value, so neighbouring pixels have nothing in common: that is TV static. <strong>Coherent noise</strong> changes smoothly, so neighbouring samples are similar and the result has shapes. Almost every texture-like use of noise needs coherence, because surfaces in the world have structure at some size.</p>
+  <h3>5.2 Frequency and amplitude</h3>
+  <p>Any signal can be described as a sum of waves. A wave's <strong>frequency</strong> is how many times it repeats across the image, and its <strong>amplitude</strong> is how strongly it varies. Low frequencies make large shapes; high frequencies make fine grain. Describing noise by how much amplitude it has at each frequency is what makes different noises comparable.</p>
+  <h3>5.3 The power spectrum</h3>
+  <p>The <strong>power spectrum</strong> plots the strength (amplitude squared) of each frequency. On log-log axes, many useful noises are straight lines, and the slope, <strong>beta</strong>, describes the noise in one number: power is proportional to f to the power beta. View A3 measures that slope from the image, so you can check a noise rather than trust its name.</p>
+  <h3>5.4 The noise colours</h3>
+  <table>
+    <thead><tr><th scope="col">Colour</th><th scope="col">Spectrum</th><th scope="col">Beta</th><th scope="col">Look and typical use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>White</strong></td><td>Flat: equal power at every frequency</td><td>0</td><td>Static. Random seeds, hashing, jitter</td></tr>
+      <tr><td><strong>Pink</strong></td><td>1/f: power halves each time frequency doubles</td><td>-1</td><td>Natural-looking variation with detail at every scale. Clouds, foliage tint</td></tr>
+      <tr><td><strong>Brown (red)</strong></td><td>1/f squared</td><td>-2</td><td>Smooth, wandering shapes. Terrain height, slow drift</td></tr>
+      <tr><td><strong>Blue</strong></td><td>Rises with f</td><td>+1</td><td>Even speckle with no clumps. Dithering, sample patterns</td></tr>
+      <tr><td><strong>Violet</strong></td><td>f squared</td><td>+2</td><td>Fine grain only, almost no large shapes. Rarely used directly</td></tr>
+    </tbody>
+  </table>
+  <h3>5.5 Why blue noise is preferred for dithering and sampling</h3>
+  <p>Dithering and stochastic effects add a small random offset per pixel to hide banding or approximate transparency. White noise has as much low-frequency power as high, so its errors clump into blotches the eye picks out. Blue noise puts its power at high frequencies, so its errors are spread evenly and are easy to blur away, which is exactly what temporal anti-aliasing and a slight blur do. The pattern looks finer for the same amount of noise.</p>
+  <h3>5.6 Value noise and gradient noise</h3>
+  <p><strong>Value noise</strong> places a random value at each point of a grid and blends between them. It is cheap, but its peaks and troughs sit on grid points, so the grid shows. <strong>Gradient noise</strong>, such as <strong>Perlin noise</strong> and its successor <strong>simplex noise</strong>, places a random slope at each grid point instead, so the value is zero at every grid point and the features fall between them. That hides the grid and gives rounder, more even shapes, at a little more cost.</p>
+  <h3>5.7 Fractal Brownian motion</h3>
+  <p><strong>fBm</strong> builds detail at many scales from one coherent noise by adding copies of it. Each copy is an <strong>octave</strong>. Two numbers control the stack. <strong>Lacunarity</strong> multiplies the frequency from one octave to the next, usually 2. <strong>Gain</strong>, also called <strong>persistence</strong>, multiplies the amplitude, usually 0.5. The result has large shapes from the first octave and fine grain from the last.</p>
+  <h3>5.8 How gain shapes the spectrum</h3>
+  <p>Each octave doubles the frequency and multiplies the amplitude by the gain, so across octaves amplitude falls as f to the power log2(gain). Power is amplitude squared, so the spectral slope is about 2 log2(gain). With the usual gain of 0.5, that gives a slope of -2, a brown-like result: smooth, hill-like shapes. A gain of about 0.71 gives a slope of -1, a pink-like result with more fine detail. Raising the gain is therefore the same decision as choosing a noise colour.</p>
+  <h3>5.9 Turbulence and ridged variants</h3>
+  <p><strong>Turbulence</strong> adds the absolute value of each octave instead of the signed value. Folding every octave at zero creates creases where the noise crosses zero, which reads as billowing smoke or fire. <strong>Ridged</strong> noise inverts the folded value and squares it, so the creases become sharp crests: mountain ridges, veins and cracks.</p>
+</section>
+
+<section aria-labelledby="h6s">
+  <h2 id="h6s">6. Common Pitfalls</h2>
+  <table>
+    <thead><tr><th scope="col">Symptom</th><th scope="col">Cause</th><th scope="col">Fix</th></tr></thead>
+    <tbody>
+      <tr><td>A visible square grid in the noise</td><td>Value noise, whose features sit on grid points</td><td>Use gradient or simplex noise, or rotate each octave's coordinates</td></tr>
+      <tr><td>The pattern repeats across a large surface</td><td>The noise is a tiling texture, or every octave uses the same lattice offset</td><td>Use world-position input with large-scale variation, and offset each octave</td></tr>
+      <tr><td>Washed-out, grey result</td><td>Many octaves at high gain add many independent values, which average towards the middle</td><td>Remap the output range, or use fewer octaves or a lower gain</td></tr>
+      <tr><td>Shimmer or sparkle in the distance</td><td>Octaves above half a cycle per pixel cannot be shown and alias</td><td>Limit the octave count, or fade octaves out by distance with derivatives</td></tr>
+      <tr><td>Values below 0 or above 1 clip to flat black or white</td><td>The summed amplitude exceeds the expected range</td><td>Divide by the amplitude sum, then remap to the range you need</td></tr>
+      <tr><td>Dithered gradients show blotches or banding</td><td>White noise dither, whose low-frequency power forms clumps</td><td>Use a blue noise texture for dithering</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h7s">
+  <h2 id="h7s">7. Unreal Parallels</h2>
+  <table>
+    <thead><tr><th scope="col">Idea in the demos</th><th scope="col">Where it lives in Unreal</th><th scope="col">Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Choice of base noise</td><td>The <code>Noise</code> node's <strong>Function</strong> setting, which lists texture-based and computed variants of simplex, gradient, value and Voronoi noise</td><td>The tooltip lists each function's cost, so you can trade quality for instructions</td></tr>
+      <tr><td>Octaves</td><td>The <code>Noise</code> node's <strong>Levels</strong> setting</td><td>Each level is another octave and adds cost</td></tr>
+      <tr><td>Output range</td><td><strong>Output Min</strong> and <strong>Output Max</strong> on the <code>Noise</code> node</td><td>Sets the range directly, avoiding clipping and washed-out results</td></tr>
+      <tr><td>Turbulence</td><td>The <code>Noise</code> node's <strong>Turbulence</strong> option</td><td>Folds each level, the same as Mode: Turbulence in Demo B</td></tr>
+      <tr><td>Sampling position</td><td>The <code>Noise</code> node's <strong>World Position</strong> input, usually <code>AbsoluteWorldPosition</code> divided by a scale</td><td>World-space input keeps the pattern continuous across meshes and avoids UV stretching</td></tr>
+      <tr><td>Custom fBm, ridged noise</td><td>A Material Function that adds several noise samples with your own lacunarity, gain and per-octave transform</td><td>Gives the controls the <code>Noise</code> node does not expose</td></tr>
+      <tr><td>Blue noise for dithering</td><td>A blue noise texture, sampled by screen position and offset per frame, used for dithered opacity and other stochastic effects that temporal anti-aliasing resolves</td><td>Spreads the error evenly so it blurs away instead of clumping</td></tr>
+      <tr><td>Cost per octave</td><td>The material's instruction count in the <strong>Stats</strong> panel</td><td>Computed noise costs arithmetic on every pixel, every frame, for every octave</td></tr>
+      <tr><td>Baking noise</td><td>Draw the noise into a <strong>Render Target</strong> and save it as a texture, or cache it in a <strong>Runtime Virtual Texture</strong></td><td>One texture read replaces many octaves of arithmetic, and the baked texture gets mips</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h8s">
+  <h2 id="h8s">8. Exercises</h2>
+  <ol>
+    <li><strong>Read the colours.</strong> In Demo A, step through all five presets. For each, record the measured slope and describe the 2D image in three words. Which preset would you pick for a terrain heightmap, and why?</li>
+    <li><strong>Normalisation.</strong> Turn off contrast normalisation and step through the presets again. Explain why brown and violet look so different in raw contrast from white, using the spectrum view.</li>
+    <li><strong>Tune fBm.</strong> In Demo B, set gain to 0.5 and then 0.7, and describe how the image changes. Using section 5.8, predict the spectral slope for each gain.</li>
+    <li><strong>Stretch: stay below the limit.</strong> With lacunarity 2.5 and base frequency 8, find the largest octave count that does not trigger the aliasing warning. Mute the octaves one at a time from the highest down, and explain which ones you could drop with little visible change, and what that saves in a material.</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h9s">
+  <h2 id="h9s">9. Reflective Questions</h2>
+  <p>These are for discussion with your peers and are not graded.</p>
+  <ol>
+    <li>Blue noise is better for dithering but harder to generate than white noise. When is it worth shipping a blue noise texture instead of computing white noise in the shader?</li>
+    <li>fBm with eight octaves of gradient noise can cost more than several texture samples. How would you decide between computing it and baking it?</li>
+    <li>Ridged and turbulence noise are small changes to fBm. What other per-octave changes could you make, and what might each look like?</li>
+    <li>The measured slope of a noise is a single number. What does it fail to tell you about how the noise looks?</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h10s">
+  <h2 id="h10s">10. Glossary</h2>
+  <table>
+    <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Aliasing</strong></td><td>False patterns or shimmer caused by detail finer than the pixel grid can show</td></tr>
+      <tr><td><strong>Amplitude</strong></td><td>How strongly a wave or octave varies</td></tr>
+      <tr><td><strong>Beta</strong></td><td>The slope of the power spectrum on log-log axes</td></tr>
+      <tr><td><strong>Coherent noise</strong></td><td>Noise whose neighbouring values are similar, so it forms shapes</td></tr>
+      <tr><td><strong>fBm</strong></td><td>Fractal Brownian motion: a sum of octaves of one noise at rising frequency and falling amplitude</td></tr>
+      <tr><td><strong>FFT</strong></td><td>Fast Fourier transform: converts a signal into its frequencies, and back again</td></tr>
+      <tr><td><strong>Frequency</strong></td><td>How many times a wave repeats over a distance, here cycles per image or cycles per pixel</td></tr>
+      <tr><td><strong>Gain</strong></td><td>The amplitude multiplier between octaves, also called persistence</td></tr>
+      <tr><td><strong>Gradient noise</strong></td><td>Noise built from random slopes at grid points, such as Perlin and simplex noise</td></tr>
+      <tr><td><strong>Lacunarity</strong></td><td>The frequency multiplier between octaves</td></tr>
+      <tr><td><strong>Octave</strong></td><td>One layer of fBm, at one frequency and amplitude</td></tr>
+      <tr><td><strong>Power spectrum</strong></td><td>The strength of each frequency in a signal</td></tr>
+      <tr><td><strong>Ridged noise</strong></td><td>fBm built from inverted, folded octaves, giving sharp crests</td></tr>
+      <tr><td><strong>Turbulence</strong></td><td>fBm built from the absolute value of each octave</td></tr>
+      <tr><td><strong>Value noise</strong></td><td>Noise built by blending random values placed at grid points</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<p class="sr-only" id="live" aria-live="polite" aria-atomic="true"></p>
+
+<footer>
+  <button type="button" id="selftest-run">Run self-test</button>
+  <span id="selftest-summary" aria-live="polite"></span>
+  <ul id="selftest-results"></ul>
+</footer>
+
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =====================================================================
+     PRNG: mulberry32, a small seeded generator, so every result can be
+     reproduced from its seed.
+     ===================================================================== */
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* =====================================================================
+     FFT: iterative radix-2, in place, on separate real and imaginary
+     arrays. The inverse divides by n so a round trip returns the input.
+     ===================================================================== */
+  const FFT = {
+    transform(re, im, inverse) {
+      const n = re.length;
+      // Bit-reversal permutation puts samples in the order the butterflies need.
+      for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+          let t = re[i]; re[i] = re[j]; re[j] = t;
+          t = im[i]; im[i] = im[j]; im[j] = t;
+        }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const ang = (inverse ? 2 : -2) * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+        for (let i = 0; i < n; i += len) {
+          let cr = 1, ci = 0;
+          for (let j = 0; j < half; j++) {
+            const a = i + j, b = a + half;
+            const tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+            re[b] = re[a] - tr; im[b] = im[a] - ti;
+            re[a] += tr; im[a] += ti;
+            const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+          }
+        }
+      }
+      if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    },
+    // 2D transform: every row, then every column.
+    transform2D(re, im, n, inverse) {
+      const r = new Float64Array(n), c = new Float64Array(n);
+      for (let y = 0; y < n; y++) {
+        const o = y * n;
+        for (let x = 0; x < n; x++) { r[x] = re[o + x]; c[x] = im[o + x]; }
+        FFT.transform(r, c, inverse);
+        for (let x = 0; x < n; x++) { re[o + x] = r[x]; im[o + x] = c[x]; }
+      }
+      for (let x = 0; x < n; x++) {
+        for (let y = 0; y < n; y++) { r[y] = re[y * n + x]; c[y] = im[y * n + x]; }
+        FFT.transform(r, c, inverse);
+        for (let y = 0; y < n; y++) { re[y * n + x] = r[y]; im[y * n + x] = c[y]; }
+      }
+    }
+  };
+
+  /* =====================================================================
+     Noise generators.
+     Spectral: every colour from one algorithm. Random phase per frequency
+     bin, amplitude (f/f0)^(beta/2), inverse FFT, keep the real part.
+     Lattice: value and gradient noise for Demo B, from a seeded permutation.
+     ===================================================================== */
+  const Spectral = {
+    phaseCache: new Map(),
+    // Phases depend only on seed and size, so beta changes reuse them and only rescale amplitudes.
+    phases(key, count, seed) {
+      if (!this.phaseCache.has(key)) {
+        const rnd = mulberry32(seed), c = new Float64Array(count), s = new Float64Array(count);
+        for (let i = 0; i < count; i++) { const a = rnd() * 2 * Math.PI; c[i] = Math.cos(a); s[i] = Math.sin(a); }
+        if (this.phaseCache.size > 12) this.phaseCache.clear();
+        this.phaseCache.set(key, { c, s });
+      }
+      return this.phaseCache.get(key);
+    },
+    // Wrapped signed frequency of bin k in an n-point transform.
+    freq(k, n) { return k <= n / 2 ? k : k - n; },
+    field2D(n, beta, seed) {
+      const ph = this.phases(`2d:${n}:${seed}`, n * n, seed * 7919 + n), re = new Float64Array(n * n), im = new Float64Array(n * n);
+      const f0 = n / 8; // amplitudes cross 1 here, so raw contrast stays comparable between colours
+      for (let ky = 0; ky < n; ky++) {
+        const fy = this.freq(ky, n);
+        for (let kx = 0; kx < n; kx++) {
+          const f = Math.hypot(this.freq(kx, n), fy), i = ky * n + kx;
+          if (f === 0) continue; // no DC term: the field averages to zero
+          const a = Math.pow(f / f0, beta / 2);
+          re[i] = a * ph.c[i]; im[i] = a * ph.s[i];
+        }
+      }
+      FFT.transform2D(re, im, n, true);
+      return re; // the real part of a random-phase spectrum keeps the same power slope
+    },
+    signal1D(n, beta, seed) {
+      const ph = this.phases(`1d:${n}:${seed}`, n, seed * 104729 + n), re = new Float64Array(n), im = new Float64Array(n);
+      const f0 = n / 8;
+      for (let k = 1; k < n; k++) {
+        const a = Math.pow(Math.abs(this.freq(k, n)) / f0, beta / 2);
+        re[k] = a * ph.c[k]; im[k] = a * ph.s[k];
+      }
+      FFT.transform(re, im, true);
+      return re;
+    },
+    // Standard deviation a white field of this size has under the same convention: the reference for raw contrast.
+    whiteStd2D(n) { return Math.sqrt((n * n - 1) / (2 * Math.pow(n, 4))); },
+    whiteStd1D(n) { return Math.sqrt((n - 1) / (2 * n * n)); },
+    // Radially averaged power spectrum and its least-squares slope on log-log axes.
+    radialSpectrum(field, n) {
+      const re = Float64Array.from(field), im = new Float64Array(n * n);
+      FFT.transform2D(re, im, n, false);
+      const half = n / 2, sum = new Float64Array(half + 1), cnt = new Float64Array(half + 1);
+      for (let ky = 0; ky < n; ky++) {
+        const fy = this.freq(ky, n);
+        for (let kx = 0; kx < n; kx++) {
+          const r = Math.round(Math.hypot(this.freq(kx, n), fy));
+          if (r < 1 || r > half) continue;
+          const i = ky * n + kx; sum[r] += re[i] * re[i] + im[i] * im[i]; cnt[r]++;
+        }
+      }
+      const pts = [];
+      for (let r = 1; r <= half; r++) if (cnt[r] > 0 && sum[r] > 0) pts.push([Math.log10(r), Math.log10(sum[r] / cnt[r])]);
+      // Fit from r = 2 to just below Nyquist, where the rings are complete.
+      const fit = pts.filter(p => p[0] >= Math.log10(2) && p[0] <= Math.log10(half - 1));
+      const mx = fit.reduce((s, p) => s + p[0], 0) / fit.length, my = fit.reduce((s, p) => s + p[1], 0) / fit.length;
+      let sxy = 0, sxx = 0;
+      fit.forEach(p => { sxy += (p[0] - mx) * (p[1] - my); sxx += (p[0] - mx) * (p[0] - mx); });
+      return { pts, slope: sxy / sxx, mx, my };
+    }
+  };
+
+  const Lattice = {
+    // Seeded permutation of 0..255, doubled so lookups never need wrapping twice.
+    perm(seed) {
+      const rnd = mulberry32(seed), p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = p[i]; p[i] = p[j]; p[j] = t; }
+      const q = new Uint8Array(512); for (let i = 0; i < 512; i++) q[i] = p[i & 255];
+      return q;
+    },
+    hash(p, x, y) { return p[p[x & 255] + (y & 255)]; },
+    // Value noise: random values at grid points, blended with a smooth curve. Range -1..1.
+    value(p, x, y) {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      const a = this.hash(p, xi, yi) / 127.5 - 1, b = this.hash(p, xi + 1, yi) / 127.5 - 1;
+      const c = this.hash(p, xi, yi + 1) / 127.5 - 1, d = this.hash(p, xi + 1, yi + 1) / 127.5 - 1;
+      return (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v;
+    },
+    // Gradient noise: a random slope at each grid point, so the value is zero on the grid. Range about -1..1.
+    grad(h, x, y) {
+      const g = h & 7, s = 0.70710678;
+      switch (g) {
+        case 0: return x; case 1: return -x; case 2: return y; case 3: return -y;
+        case 4: return (x + y) * s; case 5: return (-x + y) * s; case 6: return (x - y) * s; default: return (-x - y) * s;
+      }
+    },
+    gradient(p, x, y) {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+      const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10), v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
+      const a = this.grad(this.hash(p, xi, yi), xf, yf), b = this.grad(this.hash(p, xi + 1, yi), xf - 1, yf);
+      const c = this.grad(this.hash(p, xi, yi + 1), xf, yf - 1), d = this.grad(this.hash(p, xi + 1, yi + 1), xf - 1, yf - 1);
+      const top = a + (b - a) * u, bottom = c + (d - c) * u;
+      return Math.max(-1, Math.min(1, (top + (bottom - top) * v) * 1.4142));
+    }
+  };
+
+  /* =====================================================================
+     fBm: octave fields are cached raw (-1..1), so gain, mode, mute and
+     solo only recombine them instead of recomputing the noise.
+     ===================================================================== */
+  const B_SIZE = 256;
+  const Fbm = {
+    cache: new Map(),
+    octaveField(type, seed, freq, index) {
+      const key = `${type}|${seed}|${freq.toFixed(5)}|${index}`;
+      if (this.cache.has(key)) return this.cache.get(key);
+      if (this.cache.size > 48) this.cache.clear();
+      const p = Lattice.perm(seed), out = new Float32Array(B_SIZE * B_SIZE);
+      // Each octave is shifted by a different offset, so its grid does not line up with the octave below.
+      const ox = index * 17.31 + 3.7, oy = index * 29.17 + 11.3, step = freq / B_SIZE;
+      const fn = type === 'gradient' ? Lattice.gradient.bind(Lattice) : Lattice.value.bind(Lattice);
+      for (let y = 0; y < B_SIZE; y++) for (let x = 0; x < B_SIZE; x++) out[y * B_SIZE + x] = fn(p, x * step + ox, y * step + oy);
+      this.cache.set(key, out);
+      return out;
+    },
+    // Per-octave transform for each mode.
+    shape(mode, n) {
+      if (mode === 'turbulence') return Math.abs(n);
+      if (mode === 'ridged') { const r = 1 - Math.abs(n); return r * r; }
+      return n;
+    },
+    // Map a summed value to 0..1 for display, using the active amplitude sum.
+    display(mode, sum, ampSum) {
+      if (ampSum <= 0) return 0.5;
+      return mode === 'fbm' ? (sum / ampSum) * 0.5 + 0.5 : sum / ampSum;
+    },
+    octaves(s) {
+      const list = [];
+      for (let i = 0; i < s.octaves; i++) list.push({ i, freq: s.scale * Math.pow(s.lacunarity, i), amp: Math.pow(s.gain, i) });
+      return list;
+    },
+    active(s, list) {
+      if (s.solo !== null && s.solo < list.length) return list.filter(o => o.i === s.solo);
+      return list.filter(o => !s.muted.has(o.i));
+    }
+  };
+
+  /* =====================================================================
+     Rendering helpers: greyscale images and simple labelled plots, all
+     with Canvas 2D. Colours come from the CSS theme.
+     ===================================================================== */
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const Render = {
+    grey(canvas, n, valueAt) {
+      if (canvas.width !== n) { canvas.width = n; canvas.height = n; }
+      const ctx = canvas.getContext('2d'), img = ctx.createImageData(n, n), d = img.data;
+      for (let i = 0; i < n * n; i++) {
+        const v = Math.max(0, Math.min(255, Math.round(valueAt(i) * 255)));
+        d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return ctx;
+    },
+    // Size the canvas backing store to its displayed size, for crisp lines on any screen.
+    prepare(canvas) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), r = canvas.getBoundingClientRect();
+      const w = Math.max(200, Math.round(r.width)), h = Math.max(120, Math.round(r.height));
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, w, h };
+    },
+    // Axes with ticks and titles; returns a mapping from data to pixels.
+    axes(ctx, w, h, o) {
+      const m = { l: 52, r: 12, t: 10, b: 40 }, pw = w - m.l - m.r, ph = h - m.t - m.b;
+      const X = x => m.l + (x - o.x0) / (o.x1 - o.x0) * pw, Y = y => m.t + (1 - (y - o.y0) / (o.y1 - o.y0)) * ph;
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = css('--line'); ctx.lineWidth = 1; ctx.fillStyle = css('--muted');
+      ctx.font = '11px Segoe UI, Roboto, Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      o.xt.forEach(([v, lab]) => { const x = X(v); ctx.beginPath(); ctx.moveTo(x, m.t); ctx.lineTo(x, m.t + ph); ctx.stroke(); ctx.fillText(lab, x, m.t + ph + 4); });
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      o.yt.forEach(([v, lab]) => { const y = Y(v); ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(m.l + pw, y); ctx.stroke(); ctx.fillText(lab, m.l - 6, y); });
+      ctx.strokeStyle = css('--muted'); ctx.strokeRect(m.l, m.t, pw, ph);
+      ctx.fillStyle = css('--fg'); ctx.font = '12px Segoe UI, Roboto, Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(o.xLabel, m.l + pw / 2, h - 2);
+      ctx.save(); ctx.translate(12, m.t + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText(o.yLabel, 0, 0); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(m.l, m.t, pw, ph); ctx.clip();
+      return { X, Y, done: () => ctx.restore() };
+    },
+    line(ctx, map, xs, ys, colour, width, dash) {
+      ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      for (let i = 0; i < xs.length; i++) { const x = map.X(xs[i]), y = map.Y(ys[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  };
+
+  /* =====================================================================
+     UI wiring. One state object per demo; every handler changes state,
+     marks the views it affects as dirty, and one animation frame redraws.
+     ===================================================================== */
+  const $ = id => document.getElementById(id);
+  const COLOURS = [[-2, 'brown'], [-1, 'pink'], [0, 'white'], [1, 'blue'], [2, 'violet']];
+  const nearestColour = b => COLOURS.reduce((best, c) => Math.abs(c[0] - b) < Math.abs(best[0] - b) ? c : best)[1];
+  const fmt = (v, d) => Number(v).toFixed(d);
+
+  const A = { beta: 0, seed: 1, res: 256, normalise: true, volume: 0.2,
+              field: null, signal: null, spectrum: null, min: 0, max: 0, std: 0, sigMin: 0, sigMax: 0 };
+  const B_DEFAULTS = { base: 'value', octaves: 5, scale: 4, lacunarity: 2, gain: 0.5, mode: 'fbm', seed: 1, row: 128, showOctaves: false };
+  const B = Object.assign({ muted: new Set(), solo: null, image: null, octs: [] }, B_DEFAULTS);
+
+  const dirty = new Set();
+  let frameRequested = false;
+  function invalidate(...views) {
+    views.forEach(v => dirty.add(v));
+    if (frameRequested) return;
+    frameRequested = true;
+    // Redraw on the next animation frame. The timer is a fallback for when frames are paused,
+    // such as in a background tab; whichever fires first runs the flush, and the other does nothing.
+    const run = () => { if (frameRequested) flush(); };
+    requestAnimationFrame(run);
+    setTimeout(run, 60);
+  }
+  function flush() {
+    frameRequested = false;
+    if (dirty.has('A-gen')) generateA();
+    if (dirty.has('A-gen') || dirty.has('A-draw')) drawA();
+    if (dirty.has('B-gen')) generateB();
+    if (dirty.has('B-gen') || dirty.has('B-draw')) drawB();
+    dirty.clear();
+    announce();
+  }
+
+  /* ---------- Demo A ---------- */
+  function generateA() {
+    A.field = Spectral.field2D(A.res, A.beta, A.seed);
+    A.signal = Spectral.signal1D(512, A.beta, A.seed);
+    A.spectrum = Spectral.radialSpectrum(A.field, A.res);
+    let mn = Infinity, mx = -Infinity, ss = 0;
+    for (const v of A.field) { if (v < mn) mn = v; if (v > mx) mx = v; ss += v * v; }
+    A.min = mn; A.max = mx; A.std = Math.sqrt(ss / A.field.length);
+    A.sigMin = Math.min(...A.signal); A.sigMax = Math.max(...A.signal);
+  }
+  // Display value of a field sample: min-max normalised, or raw around 0.5 relative to white noise contrast.
+  function displayA(v) {
+    if (A.normalise) return (v - A.min) / (A.max - A.min || 1);
+    return 0.5 + 0.18 * v / Spectral.whiteStd2D(A.res);
+  }
+  function displaySignal(v) {
+    if (A.normalise) return (v - A.sigMin) / (A.sigMax - A.sigMin || 1);
+    return 0.5 + 0.18 * v / Spectral.whiteStd1D(512);
+  }
+  function drawA() {
+    const name = nearestColour(A.beta);
+    $('a-beta-val').textContent = fmt(A.beta, 1);
+    $('a-beta-name').textContent = `Nearest colour: ${name}. Power follows f to the power beta.`;
+    $('a-seed-val').textContent = String(A.seed);
+    $('a-res-val').textContent = String(A.res);
+    $('a-normalise-val').textContent = A.normalise ? 'on' : 'off';
+    $('a-image-title').textContent = `A2. 2D noise image, ${A.res} x ${A.res} pixels`;
+
+    Render.grey($('a-image'), A.res, i => displayA(A.field[i]));
+
+    // A1: the 1D signal as a line graph, value axis fixed at 0..1 so raw mode shows clipping.
+    const s = Render.prepare($('a-signal'));
+    const map = Render.axes(s.ctx, s.w, s.h, { x0: 0, x1: 511, y0: 0, y1: 1, xLabel: 'Sample index', yLabel: 'Value',
+      xt: [0, 128, 256, 384, 511].map(v => [v, String(v)]), yt: [0, 0.5, 1].map(v => [v, fmt(v, 1)]) });
+    const xs = Array.from({ length: 512 }, (_, i) => i), ys = Array.from(A.signal, v => Math.max(-0.02, Math.min(1.02, displaySignal(v))));
+    Render.line(s.ctx, map, xs, ys, css('--plot'), 1.2); map.done();
+
+    // A3: radially averaged spectrum on log-log axes, with a dashed reference line of slope beta.
+    const sp = A.spectrum, p = Render.prepare($('a-spectrum'));
+    const lx = sp.pts.map(q => q[0]), ly = sp.pts.map(q => q[1]);
+    const y0 = Math.floor(Math.min(...ly)) - 0.2, y1 = Math.ceil(Math.max(...ly)) + 0.2, x1 = Math.log10(A.res / 2);
+    const xt = [1, 2, 4, 8, 16, 32, 64, 128, 256].filter(v => v <= A.res / 2).map(v => [Math.log10(v), String(v)]);
+    const yt = []; for (let v = Math.ceil(y0); v <= Math.floor(y1); v++) yt.push([v, '1e' + v]);
+    const pm = Render.axes(p.ctx, p.w, p.h, { x0: 0, x1, y0, y1, xLabel: 'Frequency (cycles per image, log scale)', yLabel: 'Power (log scale)', xt, yt });
+    Render.line(p.ctx, pm, lx, ly, css('--plot'), 1.4);
+    Render.line(p.ctx, pm, [0, x1], [sp.my + A.beta * (0 - sp.mx), sp.my + A.beta * (x1 - sp.mx)], css('--accent'), 1.6, [6, 4]);
+    pm.done();
+
+    $('a-read-slope').textContent = `Measured slope: ${fmt(sp.slope, 2)} (target ${fmt(A.beta, 1)}; dashed line)`;
+    $('a-read-range').textContent = `Raw range: ${fmt(A.min / Spectral.whiteStd2D(A.res), 2)} to ${fmt(A.max / Spectral.whiteStd2D(A.res), 2)} white-noise deviations`;
+    $('a-signal-desc').textContent = `Line graph of 512 samples of ${name} noise (beta ${fmt(A.beta, 1)}), ${A.normalise ? 'normalised to 0-1' : 'raw and clipped to 0-1'}.`;
+    $('a-image-desc').textContent = `Greyscale ${name} noise image, ${A.res} by ${A.res} pixels, seed ${A.seed}.`;
+    $('a-spectrum-desc').textContent = `Log-log power spectrum. Measured slope ${fmt(sp.slope, 2)} against the target ${fmt(A.beta, 1)}, shown dashed.`;
+  }
+
+  /* ---------- Demo B ---------- */
+  function generateB() {
+    B.octs = Fbm.octaves(B);
+    B.octs.forEach(o => { o.field = Fbm.octaveField(B.base, B.seed, o.freq, o.i); });
+    const act = Fbm.active(B, B.octs), ampSum = act.reduce((s, o) => s + o.amp, 0), img = new Float32Array(B_SIZE * B_SIZE);
+    for (let i = 0; i < img.length; i++) {
+      let s = 0; for (const o of act) s += o.amp * Fbm.shape(B.mode, o.field[i]);
+      img[i] = Fbm.display(B.mode, s, ampSum);
+    }
+    B.image = img; B.ampSum = ampSum; B.active = act;
+  }
+  function buildStrip() {
+    // Rebuild the thumbnails only when the octave count changes; otherwise reuse and redraw them.
+    const strip = $('b-strip');
+    if (strip.children.length === B.octaves) return;
+    strip.innerHTML = '';
+    for (let i = 0; i < B.octaves; i++) {
+      const wrap = document.createElement('div'); wrap.className = 'octave';
+      wrap.innerHTML = `<button type="button" class="thumb" id="b-mute-${i}" aria-pressed="false" aria-label="Octave ${i + 1}: toggle mute"><canvas width="64" height="64"></canvas></button>
+        <span id="b-oct-cap-${i}"></span>
+        <button type="button" class="solo" id="b-solo-${i}" aria-pressed="false" aria-label="Solo octave ${i + 1}">Solo</button>`;
+      strip.appendChild(wrap);
+      $('b-mute-' + i).addEventListener('click', () => onMuteToggle(i));
+      $('b-solo-' + i).addEventListener('click', () => onSoloToggle(i));
+    }
+  }
+  function drawB() {
+    $('b-octaves-val').textContent = String(B.octaves);
+    $('b-scale-val').textContent = fmt(B.scale, 1);
+    $('b-lacunarity-val').textContent = fmt(B.lacunarity, 2);
+    $('b-gain-val').textContent = fmt(B.gain, 2);
+    $('b-seed-val').textContent = String(B.seed);
+    $('b-row-val').textContent = String(B.row);
+    $('b-show-octaves-val').textContent = B.showOctaves ? 'on' : 'off';
+
+    // B1: the summed image, plus the selected row as a line.
+    const ctx = Render.grey($('b-image'), B_SIZE, i => B.image[i]);
+    ctx.fillStyle = css('--accent'); ctx.fillRect(0, B.row, B_SIZE, 1);
+
+    // B2: one thumbnail per octave, showing its raw noise. Each thumbnail is a full-resolution crop of the
+    // top-left 64 x 64 pixels; shrinking the whole image instead would skip pixels and alias the fine octaves.
+    buildStrip();
+    B.octs.forEach(o => {
+      const c = $('b-mute-' + o.i).querySelector('canvas'), g = c.getContext('2d'), img = g.createImageData(64, 64);
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+        const v = Math.round((o.field[y * B_SIZE + x] * 0.5 + 0.5) * 255), k = (y * 64 + x) * 4;
+        img.data[k] = img.data[k + 1] = img.data[k + 2] = v; img.data[k + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      $('b-oct-cap-' + o.i).textContent = `f ${fmt(o.freq, 1)}, a ${fmt(o.amp, 2)}`;
+      $('b-mute-' + o.i).setAttribute('aria-pressed', String(B.muted.has(o.i)));
+      $('b-solo-' + o.i).setAttribute('aria-pressed', String(B.solo === o.i));
+    });
+
+    // B3: the selected row, and optionally each active octave's contribution.
+    const p = Render.prepare($('b-section'));
+    const map = Render.axes(p.ctx, p.w, p.h, { x0: 0, x1: 255, y0: 0, y1: 1, xLabel: 'x (pixels)', yLabel: 'Value',
+      xt: [0, 64, 128, 192, 255].map(v => [v, String(v)]), yt: [0, 0.5, 1].map(v => [v, fmt(v, 1)]) });
+    const xs = Array.from({ length: B_SIZE }, (_, i) => i);
+    if (B.showOctaves) {
+      B.active.forEach(o => {
+        const ys = xs.map(x => {
+          const n = Fbm.shape(B.mode, o.field[B.row * B_SIZE + x]) * o.amp;
+          return B.mode === 'fbm' ? 0.5 + 0.5 * n : n;
+        });
+        Render.line(p.ctx, map, xs, ys, css('--faint'), 1);
+      });
+    }
+    Render.line(p.ctx, map, xs, xs.map(x => B.image[B.row * B_SIZE + x]), css('--plot'), 1.8);
+    map.done();
+
+    // Readouts: amplitude sum and the aliasing limit of half a cycle per pixel.
+    const top = B.active.length ? B.active.reduce((m, o) => o.freq > m.freq ? o : m) : null, cpp = top ? top.freq / B_SIZE : 0;
+    $('b-read-sum').textContent = `Amplitude sum: ${fmt(B.ampSum, 3)} (${B.active.length} of ${B.octaves} octaves active)`;
+    $('b-read-freq').textContent = top ? `Highest octave: ${fmt(top.freq, 1)} cycles per image = ${fmt(cpp, 3)} cycles per pixel` : 'Highest octave: none active';
+    const warn = $('b-read-warn');
+    warn.hidden = !(cpp > 0.5);
+    warn.textContent = cpp > 0.5 ? 'Warning: above 0.5 cycles per pixel, the top octave aliases into false patterns.' : '';
+    $('b-image-desc').textContent = `Greyscale ${B.mode === 'fbm' ? 'fBm' : B.mode} image from ${B.base} noise, ${B.active.length} active octaves, gain ${fmt(B.gain, 2)}, lacunarity ${fmt(B.lacunarity, 2)}. Selected row ${B.row}.`;
+    $('b-section-desc').textContent = `Line graph of row ${B.row}${B.showOctaves ? ', with each active octave drawn faintly' : ''}.`;
+  }
+
+  /* ---------- Live announcements, throttled so screen readers are not flooded ---------- */
+  let liveTimer = 0;
+  function announce() {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      $('live').textContent = `${$('a-read-slope').textContent}. ${$('b-read-sum').textContent}. ${$('b-read-freq').textContent}. ${$('b-read-warn').textContent}`;
+    }, 800);
+  }
+
+  /* ---------- Demo A handlers ---------- */
+  function syncPresetRadios() {
+    document.querySelectorAll('input[name=a-colour]').forEach(r => { r.checked = Math.abs(Number(r.value) - A.beta) < 1e-6; });
+  }
+  function onPresetChange(e) { A.beta = Number(e.target.value); $('a-beta').value = String(A.beta); invalidate('A-gen'); }
+  function onBetaInput(e) { A.beta = Math.round(Number(e.target.value) * 10) / 10; syncPresetRadios(); invalidate('A-gen'); }
+  function onSeedChangeA(e) { A.seed = Math.max(0, Math.floor(Number(e.target.value) || 0)); invalidate('A-gen'); }
+  function onRandomiseA() { A.seed = Math.floor(Math.random() * 1e6); $('a-seed').value = String(A.seed); invalidate('A-gen'); }
+  function onResolutionChange(e) { A.res = Number(e.target.value); invalidate('A-gen'); }
+  function onNormaliseChange(e) { A.normalise = e.target.checked; invalidate('A-draw'); }
+  function onHoverA(e) {
+    const r = e.target.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * A.res), y = Math.floor((e.clientY - r.top) / r.height * A.res);
+    if (x < 0 || y < 0 || x >= A.res || y >= A.res || !A.field) return;
+    const v = A.field[y * A.res + x];
+    $('a-hover').textContent = `Pixel (${x}, ${y}): display ${fmt(Math.max(0, Math.min(1, displayA(v))), 3)}, raw ${fmt(v / Spectral.whiteStd2D(A.res), 3)} white-noise deviations`;
+  }
+
+  // Audio: created on demand, so nothing plays or starts until a button is pressed.
+  const Audio = { ctx: null, gain: null, src: null };
+  function audioBuffer(ctx) {
+    // Synthesise 2 s of the same colour and seed at the audio rate; 512 samples would last 12 ms.
+    const len = Math.round(ctx.sampleRate * 2), n = 1 << Math.ceil(Math.log2(len));
+    const sig = Spectral.signal1D(n, A.beta, A.seed);
+    let peak = 0; for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(sig[i]));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      // Short fades at both ends stop the playback from clicking.
+      const fade = Math.min(1, i / 400, (len - 1 - i) / 400);
+      ch[i] = (sig[i] / (peak || 1)) * 0.9 * fade;
+    }
+    return buf;
+  }
+  function onListen() {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) { $('a-audio-status').textContent = 'Audio is not available in this browser.'; return; }
+    if (!Audio.ctx) { Audio.ctx = new Ctor(); Audio.gain = Audio.ctx.createGain(); Audio.gain.connect(Audio.ctx.destination); }
+    if (Audio.ctx.state === 'suspended') Audio.ctx.resume();
+    stopSource();
+    Audio.gain.gain.value = A.volume;
+    const src = Audio.ctx.createBufferSource(); src.buffer = audioBuffer(Audio.ctx); src.connect(Audio.gain);
+    src.onended = () => { if (Audio.src === src) { Audio.src = null; $('a-audio-status').textContent = 'Finished playing.'; } };
+    src.start(); Audio.src = src;
+    $('a-audio-status').textContent = `Playing 2 s of ${nearestColour(A.beta)} noise (beta ${fmt(A.beta, 1)}).`;
+  }
+  function stopSource() { if (Audio.src) { const s = Audio.src; Audio.src = null; s.onended = null; s.stop(); } }
+  function onStop() { stopSource(); $('a-audio-status').textContent = 'Stopped.'; }
+  function onVolume(e) {
+    A.volume = Number(e.target.value);
+    $('a-volume-val').textContent = fmt(A.volume, 2);
+    if (Audio.gain) Audio.gain.gain.value = A.volume;
+  }
+
+  /* ---------- Demo B handlers ---------- */
+  function clampSoloMute() {
+    // Octaves beyond the count cannot stay muted or soloed.
+    B.muted.forEach(i => { if (i >= B.octaves) B.muted.delete(i); });
+    if (B.solo !== null && B.solo >= B.octaves) B.solo = null;
+  }
+  function onBaseChange(e) { B.base = e.target.value; invalidate('B-gen'); }
+  function onOctavesInput(e) { B.octaves = Number(e.target.value); clampSoloMute(); invalidate('B-gen'); }
+  function onScaleInput(e) { B.scale = Number(e.target.value); invalidate('B-gen'); }
+  function onLacunarityInput(e) { B.lacunarity = Number(e.target.value); invalidate('B-gen'); }
+  function onGainInput(e) { B.gain = Number(e.target.value); invalidate('B-gen'); }
+  function onModeChange(e) { B.mode = e.target.value; invalidate('B-gen'); }
+  function onSeedChangeB(e) { B.seed = Math.max(0, Math.floor(Number(e.target.value) || 0)); invalidate('B-gen'); }
+  function onRandomiseB() { B.seed = Math.floor(Math.random() * 1e6); $('b-seed').value = String(B.seed); invalidate('B-gen'); }
+  function onShowOctaves(e) { B.showOctaves = e.target.checked; invalidate('B-draw'); }
+  function onRowInput(e) { B.row = Number(e.target.value); invalidate('B-draw'); }
+  function rowFromPointer(e) {
+    const r = $('b-image').getBoundingClientRect();
+    return Math.max(0, Math.min(B_SIZE - 1, Math.floor((e.clientY - r.top) / r.height * B_SIZE)));
+  }
+  let dragging = false;
+  function onRowDrag(e) {
+    if (e.type === 'pointerdown') { dragging = true; if (e.target.setPointerCapture && e.pointerId !== undefined) { try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events have no capturable pointer */ } } }
+    if (!dragging) return;
+    B.row = rowFromPointer(e); $('b-row').value = String(B.row); invalidate('B-draw');
+  }
+  function onHoverB(e) {
+    const r = e.target.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * B_SIZE), y = Math.floor((e.clientY - r.top) / r.height * B_SIZE);
+    if (x < 0 || y < 0 || x >= B_SIZE || y >= B_SIZE || !B.image) return;
+    $('b-hover').textContent = `Pixel (${x}, ${y}): value ${fmt(B.image[y * B_SIZE + x], 3)}`;
+  }
+  function onMuteToggle(i) { B.solo = null; B.muted.has(i) ? B.muted.delete(i) : B.muted.add(i); invalidate('B-gen'); }
+  function onSoloToggle(i) { B.solo = B.solo === i ? null : i; invalidate('B-gen'); }
+  function onResetB() {
+    Object.assign(B, B_DEFAULTS); B.muted = new Set(); B.solo = null;
+    $('b-base-value').checked = true; $('b-mode-fbm').checked = true;
+    ['octaves', 'scale', 'lacunarity', 'gain', 'seed', 'row'].forEach(k => { $('b-' + k).value = String(B[k]); });
+    $('b-show-octaves').checked = false;
+    invalidate('B-gen');
+  }
+
+  function wire() {
+    document.querySelectorAll('input[name=a-colour]').forEach(r => r.addEventListener('change', onPresetChange));
+    $('a-beta').addEventListener('input', onBetaInput);
+    $('a-seed').addEventListener('change', onSeedChangeA);
+    $('a-randomise').addEventListener('click', onRandomiseA);
+    $('a-res').addEventListener('change', onResolutionChange);
+    $('a-normalise').addEventListener('change', onNormaliseChange);
+    $('a-listen').addEventListener('click', onListen);
+    $('a-stop').addEventListener('click', onStop);
+    $('a-volume').addEventListener('input', onVolume);
+    $('a-image').addEventListener('mousemove', onHoverA);
+    document.querySelectorAll('input[name=b-base]').forEach(r => r.addEventListener('change', onBaseChange));
+    document.querySelectorAll('input[name=b-mode]').forEach(r => r.addEventListener('change', onModeChange));
+    $('b-octaves').addEventListener('input', onOctavesInput);
+    $('b-scale').addEventListener('input', onScaleInput);
+    $('b-lacunarity').addEventListener('input', onLacunarityInput);
+    $('b-gain').addEventListener('input', onGainInput);
+    $('b-seed').addEventListener('change', onSeedChangeB);
+    $('b-randomise').addEventListener('click', onRandomiseB);
+    $('b-show-octaves').addEventListener('change', onShowOctaves);
+    $('b-row').addEventListener('input', onRowInput);
+    $('b-image').addEventListener('pointerdown', onRowDrag);
+    $('b-image').addEventListener('pointermove', onRowDrag);
+    window.addEventListener('pointerup', () => { dragging = false; });
+    $('b-image').addEventListener('mousemove', onHoverB);
+    $('b-reset').addEventListener('click', onResetB);
+    $('selftest-run').addEventListener('click', runSelfTest);
+    window.addEventListener('resize', () => invalidate('A-draw', 'B-draw'));
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => invalidate('A-draw', 'B-draw'));
+  }
+
+  /* =====================================================================
+     Self-test: change each control programmatically, then check that the
+     views it should affect changed, by hashing their pixels and text.
+     ===================================================================== */
+  function hashCanvas(c) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 3) { h ^= d[i]; h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(16) + 'x' + c.width;
+  }
+  function snapshot(els) { return els.map(el => el.tagName === 'CANVAS' ? hashCanvas(el) : el.textContent).join('|'); }
+  // Wait until pending redraws have run: two animation frames, or a timer if frames are paused.
+  const settle = () => new Promise(res => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; setTimeout(res, 0); } };
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+    setTimeout(finish, 150);
+  });
+  function setValue(el, value, evt) { el.value = String(value); el.dispatchEvent(new Event(evt, { bubbles: true })); }
+  function choose(el) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+  function pointerAt(el, type, fx, fy, Ctor) {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new Ctor(type, { bubbles: true, clientX: r.left + r.width * fx, clientY: r.top + r.height * fy }));
+  }
+
+  async function runSelfTest() {
+    const list = $('selftest-results'), results = [];
+    list.innerHTML = ''; $('selftest-summary').textContent = 'Running...';
+    const vA = () => [$('a-signal'), $('a-image'), $('a-spectrum'), $('a-read-slope')];
+    const vB = () => [$('b-image'), $('b-section'), $('b-strip'), $('b-read-sum'), $('b-read-freq'), ...Array.from(document.querySelectorAll('#b-strip canvas'))];
+    async function check(name, views, act) {
+      await settle(); const before = snapshot(views()); await act(); await settle(); const after = snapshot(views());
+      results.push({ name, pass: before !== after, note: '' });
+    }
+
+    // Demo A controls
+    for (const id of ['pink', 'brown', 'blue', 'violet', 'white']) await check(`a-colour-${id}`, vA, () => choose($('a-colour-' + id)));
+    await check('a-beta (slider to 0.4)', () => [...vA(), $('a-beta-name')], () => setValue($('a-beta'), 0.4, 'input'));
+    await check('a-seed (to 7)', vA, () => setValue($('a-seed'), 7, 'change'));
+    await check('a-randomise', () => [...vA(), $('a-seed-val')], () => $('a-randomise').click());
+    await check('a-res (to 128)', () => [$('a-image'), $('a-spectrum'), $('a-read-slope')], () => setValue($('a-res'), 128, 'change'));
+    await check('a-res (to 512)', () => [$('a-image'), $('a-spectrum'), $('a-read-slope')], () => setValue($('a-res'), 512, 'change'));
+    setValue($('a-res'), 256, 'change');
+    await check('a-normalise (off)', () => [$('a-signal'), $('a-image')], () => { const c = $('a-normalise'); c.checked = false; c.dispatchEvent(new Event('change')); });
+    { const c = $('a-normalise'); c.checked = true; c.dispatchEvent(new Event('change')); }
+    const savedVolume = $('a-volume').value;
+    await check('a-volume (to 0)', () => [$('a-volume-val')], () => setValue($('a-volume'), 0, 'input'));
+    await check('a-listen (silent)', () => [$('a-audio-status')], () => $('a-listen').click());
+    await check('a-stop', () => [$('a-audio-status')], () => $('a-stop').click());
+    setValue($('a-volume'), savedVolume, 'input');
+    await check('a-image hover', () => [$('a-hover')], () => { pointerAt($('a-image'), 'mousemove', 0.2, 0.3, MouseEvent); pointerAt($('a-image'), 'mousemove', 0.7, 0.6, MouseEvent); });
+
+    // Measured slope for each preset, at 256 x 256 and seed 1.
+    setValue($('a-seed'), 1, 'change');
+    for (const [beta, name] of COLOURS) {
+      choose($('a-colour-' + name)); await settle();
+      const m = A.spectrum.slope, ok = Math.abs(m - beta) <= 0.3;
+      results.push({ name: `slope ${name}: measured ${fmt(m, 2)}, target ${beta}`, pass: ok, note: '' });
+    }
+    choose($('a-colour-white'));
+
+    // Demo B controls
+    await check('b-base-gradient', vB, () => choose($('b-base-gradient')));
+    await check('b-base-value', vB, () => choose($('b-base-value')));
+    await check('b-octaves (to 7)', vB, () => setValue($('b-octaves'), 7, 'input'));
+    await check('b-scale (to 6)', vB, () => setValue($('b-scale'), 6, 'input'));
+    await check('b-lacunarity (to 2.5)', vB, () => setValue($('b-lacunarity'), 2.5, 'input'));
+    await check('b-gain (to 0.7)', vB, () => setValue($('b-gain'), 0.7, 'input'));
+    await check('b-mode-turbulence', vB, () => choose($('b-mode-turbulence')));
+    await check('b-mode-ridged', vB, () => choose($('b-mode-ridged')));
+    await check('b-mode-fbm', vB, () => choose($('b-mode-fbm')));
+    await check('b-seed (to 9)', vB, () => setValue($('b-seed'), 9, 'change'));
+    await check('b-randomise', () => [...vB(), $('b-seed-val')], () => $('b-randomise').click());
+    await check('b-show-octaves (on)', () => [$('b-section')], () => { const c = $('b-show-octaves'); c.checked = true; c.dispatchEvent(new Event('change')); });
+    await check('b-row (to 40)', () => [$('b-image'), $('b-section')], () => setValue($('b-row'), 40, 'input'));
+    await check('b-image drag', () => [$('b-image'), $('b-section'), $('b-row-val')], () => {
+      pointerAt($('b-image'), 'pointerdown', 0.5, 0.8, PointerEvent); pointerAt($('b-image'), 'pointermove', 0.5, 0.85, PointerEvent);
+      window.dispatchEvent(new PointerEvent('pointerup'));
+    });
+    await check('b-image hover', () => [$('b-hover')], () => { pointerAt($('b-image'), 'mousemove', 0.2, 0.3, MouseEvent); pointerAt($('b-image'), 'mousemove', 0.8, 0.6, MouseEvent); });
+    await check('b-mute-1', vB, () => $('b-mute-1').click());
+    await check('b-solo-2', vB, () => $('b-solo-2').click());
+    await check('b-solo-2 (off)', vB, () => $('b-solo-2').click());
+    await check('b-reset', () => [...vB(), $('b-octaves-val'), $('b-gain-val')], () => $('b-reset').click());
+    // The aliasing warning must appear when the top octave passes 0.5 cycles per pixel.
+    setValue($('b-octaves'), 8, 'input'); setValue($('b-lacunarity'), 3, 'input'); setValue($('b-scale'), 16, 'input');
+    await settle();
+    results.push({ name: 'aliasing warning shown above 0.5 cycles per pixel', pass: !$('b-read-warn').hidden, note: '' });
+    $('b-reset').click(); await settle();
+    results.push({ name: 'aliasing warning hidden at defaults', pass: $('b-read-warn').hidden, note: '' });
+
+    // Restore Demo A defaults.
+    setValue($('a-seed'), 1, 'change'); setValue($('a-beta'), 0, 'input'); choose($('a-colour-white')); await settle();
+
+    const passed = results.filter(r => r.pass).length;
+    results.forEach(r => {
+      const li = document.createElement('li'); li.className = r.pass ? 'pass' : 'fail';
+      li.textContent = `${r.pass ? 'PASS' : 'FAIL'} - ${r.name}`; list.appendChild(li);
+    });
+    $('selftest-summary').textContent = `${passed} of ${results.length} checks passed.`;
+    document.body.dataset.selftest = passed === results.length ? 'pass' : 'fail';
+  }
+
+  /* ---------- Start ---------- */
+  wire();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.style.scrollBehavior = 'auto';
+  invalidate('A-gen', 'B-gen');
+  if (location.hash === '#selftest') requestAnimationFrame(() => setTimeout(runSelfTest, 50));
+})();
+</script>
+</body>
+</html>

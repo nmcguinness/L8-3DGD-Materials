@@ -7,14 +7,14 @@ stage: 4
 institution: "DkIT"
 author: "Niall McGuinness"
 academic-year: "2026-27"
-last-updated: "2026-10-23"
+last-updated: "2026-11-19"
 doc-type: notes
 session: 2
 topic_code: MAT-02B
 difficulty_tier: intermediate
 duration: "Extra reading, about 60 min plus 40 min worked example"
 prerequisites: [01_pbr_and_material_editor]
-feeds_into: [03_runtime_materials_and_performance, 06_hlsl_fundamentals, 07_applied_hlsl]
+feeds_into: [05_runtime_materials_and_performance, 09_hlsl_fundamentals, 10_applied_hlsl]
 engine_version: "UE 5.7"
 ---
 
@@ -99,8 +99,6 @@ GPU textures are stored in **block compression (BC)** formats. Each format split
 | BC5 | 2 | 8 | `Normalmap (DXT5, BC5 on DX11)` |
 | BC7 | 3 or 4 | 8 | `BC7 (DX11, optional A)` |
 
-<!-- VERIFY: Confirm UE 5.7 Masks compression selects BC1 for textures without alpha and BC3 for textures with alpha on desktop, and that Grayscale stores uncompressed G8. -->
-
 Work out the memory for a 2048 x 2048 texture by multiplying pixels by bits, then adding a third for the mip chain:
 
 ```text
@@ -139,7 +137,7 @@ Follow these rules when you pack your own textures:
 
 A **sampler** is the hardware state that says how to filter and wrap a texture. On Direct3D 11 and 12 class hardware a single shader can use at most 16 samplers. A material that samples 17 textures with their own samplers fails to compile.
 
-Unreal works around this with **Sampler Source** on the `Texture Sample` node. The default, `From texture asset`, uses a sampler per texture. Setting it to `Shared: Wrap` or `Shared: Clamp` makes the sample use a shared sampler that does not count towards the 16. <!-- VERIFY: Confirm the UE 5.7 Sampler Source property name and its options "From texture asset", "Shared: Wrap" and "Shared: Clamp". -->
+Unreal works around this with **Sampler Source** on the `Texture Sample` node. The default, `From texture asset`, uses a sampler per texture. Setting it to `Shared: Wrap` or `Shared: Clamp` makes the sample use a shared sampler that does not count towards the 16.
 
 Shared samplers remove the compile error, but not the cost: every sample still fetches texels. Packing reduces both, so pack first and share samplers second.
 
@@ -203,7 +201,7 @@ A tangent-space normal is a unit direction that always points out of the surface
 
 The spherical scheme fails for a reason that applies to any angle stored in a texture. Two neighbouring texels hold `phi` values of 358 and 2 degrees. Bilinear filtering averages them to 180 degrees, which decodes to a normal pointing the opposite way. Mip generation averages texels in the same way, so the fault shows at a distance even without filtering.
 
-Unreal uses the XY scheme. A texture with `Normalmap` compression is stored in BC5, which keeps two independent channels at full 8-bit quality. When the `Texture Sample` node's Sampler Type is `Normal`, the engine rebuilds Z from X and Y for you. When you store X and Y yourself, for example in two channels of a packed mask texture, the `DeriveNormalZ` node performs the same rebuild. <!-- VERIFY: Confirm a UE 5.7 Texture Sample with Sampler Type Normal reconstructs Z automatically for BC5 normal maps, and the DeriveNormalZ node's input name. -->
+Unreal uses the XY scheme. A texture with `Normalmap` compression is stored in BC5, which keeps two independent channels at full 8-bit quality. When the `Texture Sample` node's Sampler Type is `Normal`, the engine rebuilds Z from X and Y for you. When you store X and Y yourself, for example in two channels of a packed mask texture, the `DeriveNormalZ` node performs the same rebuild: wire the two channels into its `InXY` input.
 
 ### 5.8 Dependent Texture Lookups
 
@@ -263,43 +261,47 @@ Dependent lookups are not wrong. Reflections, distortion and parallax all need t
 
 ## 6. Worked Example
 
-Work through this example in the demo project after reading section 5. Create a folder `/Game/Student/Week02` for your own assets.
+Work through this example in the demo project after reading section 5. Open `/Game/GD/Notes02/Demo/Levels/Lvl_Notes02`. The finished materials are in `/Game/GD/Notes02/Demo/Materials`, on the three labelled spheres. To build your own, create `/Game/Student/Notes02/MyWork` and save each material there under the name its step gives. Each name says what the material demonstrates, as the [naming conventions](../supplementary/unreal-naming-conventions.md) describe.
+
+The textures are in `/Game/GD/Shared/Textures`, one folder per set, and every demo and lab uses the same copies. They come from free **Fab** listings, apart from a few generated for this module; the README lists each source. The shared textures already have the right compression settings. Before you change a setting on one, copy it into your own folder with **Copy Here**, because every material that samples the shared texture would change too.
 
 ### 6.1 Part A - Measuring What Packing Saves
 
-The texture set in `unreal/Content/Textures/PACKING_SET_NAME` contains both separate maps (`_AO`, `_Roughness`, `_Metallic`) and the same data packed as `_ORM`.
+You use the steel set in `/Game/GD/Shared/Textures/Steel`, which holds both separate maps and the same data packed as ORM: `T_Steel_AO`, `T_Steel_Roughness`, `T_Steel_Metallic` and `T_Steel_ORM`. The three separate maps use `Grayscale (G8/16, RGB8 sRGB)` with **sRGB** unticked, and the ORM to `Masks (no sRGB)`. With sRGB off, a texture sample of a separate map needs the **Sampler Type** `Linear Grayscale`.
 
-**Step 1 - Compare the textures.** Open `_Roughness` and `_ORM` side by side. In each Texture Editor, read the format and resource size in the Details panel or the info overlay in the viewport. Note both values for all four textures. <!-- VERIFY: Confirm where the UE 5.7 Texture Editor shows the compressed format and resource size. -->
+**Step 1 - Compare the textures.** Open `T_Steel_Roughness` and `T_Steel_ORM` side by side. In each Texture Editor, read **Format** and **Resource Size** in the Details panel. Note both values for all four textures.
 
-**Step 2 - Build the separate version.** Create `M_Week02_Separate`. Wire:
+**Step 2 - Build the separate version.** In `MyWork`, create `MM_Prop_ORMSeparate_Opaque`. Wire:
 
-1. `TextureSample (_AO).R -> Ambient Occlusion`
-2. `TextureSample (_Roughness).R -> Roughness`
-3. `TextureSample (_Metallic).R -> Metallic`
+1. `TextureSample (T_Steel_AO).R -> Ambient Occlusion`
+2. `TextureSample (T_Steel_Roughness).R -> Roughness`
+3. `TextureSample (T_Steel_Metallic).R -> Metallic`
 
-**Step 3 - Build the packed version.** Create `M_Week02_Packed`. Wire:
+**Step 3 - Build the packed version.** In `MyWork`, create `MM_Prop_ORMPacked_Opaque`. Wire:
 
-1. `TextureSample (_ORM).R -> Ambient Occlusion`
-2. `TextureSample (_ORM).G -> Roughness`
-3. `TextureSample (_ORM).B -> Metallic`
+1. `TextureSample (T_Steel_ORM).R -> Ambient Occlusion`
+2. `TextureSample (T_Steel_ORM).G -> Roughness`
+3. `TextureSample (T_Steel_ORM).B -> Metallic`
 
-**Step 4 - Read the Stats.** In each material, click **Stats** in the toolbar. Compare the instruction counts and the texture sampler counts. The packed version uses one sampler instead of three for an identical result in the preview. Its instruction count changes little, because the saving is in memory traffic, which the instruction count does not show. Week 3 measures that with GPU profiling. <!-- VERIFY: Confirm the UE 5.7 Material Editor Stats panel lists texture sampler usage as "Texture samplers: n/16" and pixel shader instruction counts. -->
+**Step 4 - Read the Stats.** In each material, click **Stats** in the toolbar. Compare the instruction counts and the **Texture samplers** line, which reads as a count out of 16. An empty material already shows one or two samplers that the engine adds for its own use, so compare the difference between the two materials rather than the raw numbers. The packed version uses two fewer samplers for an identical result in the preview. Its instruction count changes little, because the saving is in memory traffic, which the instruction count does not show. Week 4 measures that with GPU profiling.
 
 ### 6.2 Part B - A Dependent Lookup Through Spherical Coordinates
 
 You build a material that reflects a lat-long sky image using the per-pixel normal. Every stage of the dependent chain in 5.8 appears in this graph.
 
-The sky image is `unreal/Content/Textures/SKY_TEXTURE_NAME`, a lat-long image imported as a 2D texture with `HDR (RGBA16F, no sRGB)` compression. <!-- VERIFY: Confirm the sky asset is a Texture2D rather than a TextureCube, because Unreal imports lat-long .hdr files as cube maps by default. -->
+You use the lat-long sky image `T_Sky_HDR` in `/Game/GD/Shared/Textures/Sky`, a 2D texture with compression `HDR (RGBA16F, no sRGB)`. If you source your own, download it as an `.exr` file, not `.hdr`, because Unreal imports a lat-long `.hdr` as a cube map, and this graph needs a 2D texture it can sample with UVs.
 
-**Step 5 - Build the direction.** Create `M_Week02_SkyReflect`. Wire:
+You also reuse `T_Wood_Normal` from `/Game/GD/Shared/Textures/Wood`, the wood set Lab 1 uses.
 
-1. `TextureSample (WOOD_SET_NAME _Normal).RGB -> Normal`
-2. Add a `ReflectionVectorWS` node. It returns the world-space reflection of the view direction about the per-pixel normal, so it depends on the normal map sample. <!-- VERIFY: Confirm ReflectionVectorWS uses the per-pixel normal from the material's Normal input in UE 5.7. -->
+**Step 5 - Build the direction.** In `MyWork`, create `MM_Prop_SkyReflection_Opaque`. Wire:
+
+1. `TextureSample (T_Wood_Normal).RGB -> Normal`
+2. Add a `ReflectionVectorWS` node. It returns the world-space reflection of the view direction about the per-pixel normal, so it depends on the normal map sample.
 3. `ReflectionVectorWS -> ComponentMask (R)`, `ComponentMask (G)` and `ComponentMask (B)`, giving `x`, `y` and `z`
 
 **Step 6 - Convert to angles and UV.** Wire:
 
-1. `ComponentMask (G) -> Arctangent2.Y` and `ComponentMask (R) -> Arctangent2.X`. This is `phi`, from -pi to pi. <!-- VERIFY: Confirm the UE 5.7 Arctangent2 node's input pin names are Y and X. -->
+1. `ComponentMask (G) -> Arctangent2.Y` and `ComponentMask (R) -> Arctangent2.X`. This is `phi`, from -pi to pi.
 2. `Arctangent2 -> Divide.A`, `Constant` 6.283185 (2 pi) `-> Divide.B`
 3. `Divide -> Frac`. This is `u`, wrapped into 0 to 1.
 4. `ComponentMask (B) -> Clamp`, with **Min Default** -1 and **Max Default** 1. The clamp stops `Arccosine` returning NaN when rounding pushes `z` just past 1.
@@ -308,13 +310,13 @@ The sky image is `unreal/Content/Textures/SKY_TEXTURE_NAME`, a lat-long image im
 
 **Step 7 - Sample the sky.** Wire:
 
-1. `AppendVector -> TextureSample (SKY_TEXTURE_NAME).UVs`
+1. `AppendVector -> TextureSample (T_Sky_HDR).UVs`
 2. `TextureSample (sky).RGB -> Emissive Color`
 3. `Constant3Vector` (black) `-> Base Color`
 
 Apply the material to a sphere. The sky wraps around it, and the wood grain from the normal map breaks up the reflection.
 
-**Step 8 - Find the seam and read the cost.** Orbit until you look at the side of the sphere that reflects +X. A thin line runs down the reflection, where `u` wraps from 1 to 0 and the GPU picks the smallest mip. Open **Stats** and compare the instruction count with `M_Week02_Packed`: two samples, but a far higher count, from the trigonometry and the chain. Set the sky sample's **MipValueMode** to `MipLevel` with a level of 0 and the seam disappears, at the cost of shimmer on distant spheres. A correct fix uses explicit derivatives, which you write in HLSL in Week 7. <!-- VERIFY: Confirm the UE 5.7 Texture Sample property name MipValueMode and the option label for an absolute mip level. -->
+**Step 8 - Find the seam and read the cost.** Orbit until you look at the side of the sphere that reflects +X. A thin line runs down the reflection, where `u` wraps from 1 to 0 and the GPU picks the smallest mip. Open **Stats** and compare the instruction count with the packed material from Step 3: two samples, but a far higher count, from the trigonometry and the chain. Select the sky `Texture Sample`, set **Mip Value Mode** to `MipLevel (absolute, 0 is full resolution)` and **Const Mip Value** to 0, and the seam disappears, at the cost of shimmer on distant spheres. A correct fix uses explicit derivatives, which you write in HLSL in Week 8.
 
 ---
 
@@ -330,7 +332,7 @@ Apply the material to a sphere. The sky wraps around it, and the wood grain from
 | `atan2` arguments swapped | Reflection or sky mirrored about the 45 degree line | Wire `y` to `Arctangent2.Y` and `x` to `Arctangent2.X` |
 | Negative `u` | Half the sky missing or repeated | Wrap with `Frac` after dividing by 2 pi |
 | `Arccosine` of a value just above 1 | Black pixels or black speckles | `Clamp` the input to -1 to 1 first |
-| Lat-long seam | Thin blurred line in the sky or reflection | Force a mip level, or use explicit derivatives (Week 7) |
+| Lat-long seam | Thin blurred line in the sky or reflection | Force a mip level, or use explicit derivatives (Week 9) |
 | Formula copied from a Y-up source | Sky upside down or rotated 90 degrees | Re-derive with Unreal's Z-up axes |
 | Spherical angles stored in a texture | Normals flip to the opposite direction at a distance or where filtering blends texels | Store XY or octahedral instead |
 
@@ -359,11 +361,11 @@ Apply the material to a sphere. The sky wraps around it, and the wood grain from
 ## 10. How This Builds
 
 - **Week 2** master materials expose packed textures as parameters, so one channel layout serves every instance. Agree the layout before building the master.
-- **Week 3** profiles material cost with the shader complexity view and instruction counts, and returns to sampler limits on a deliberately expensive scene.
-- **Week 4** uses Bump Offset, a dependent lookup that shifts every other sample's UVs.
-- **Week 5** builds water, where panning normals, refraction and depth all add samples and dependent lookups.
-- **Week 6** writes the direction-to-lat-long conversion as a Custom node. The explorer's HLSL panels show the code you will write.
-- **Week 7** fixes the lat-long seam with explicit derivatives, and uses loops of dependent samples in parallax occlusion mapping.
+- **Week 4** profiles material cost with the shader complexity view and instruction counts, and returns to sampler limits on a deliberately expensive scene.
+- **Week 5** uses Bump Offset, a dependent lookup that shifts every other sample's UVs.
+- **Week 6** builds water, where panning normals, refraction and depth all add samples and dependent lookups.
+- **Week 8** writes the direction-to-lat-long conversion as a Custom node. The explorer's HLSL panels show the code you will write.
+- **Week 9** fixes the lat-long seam with explicit derivatives, and uses loops of dependent samples in parallax occlusion mapping.
 
 ---
 
@@ -384,5 +386,3 @@ Apply the material to a sphere. The sky wraps around it, and the wood grain from
 | **Sampler** | Hardware state that sets how a texture is filtered and wrapped. Limited to 16 per shader |
 | **Spherical coordinates** | A position written as a radius and two angles |
 | **Texture cache** | Fast on-chip memory holding recently read texels |
-
----

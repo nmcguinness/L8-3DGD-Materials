@@ -7,7 +7,7 @@ stage: 4
 institution: "DkIT"
 author: "Niall McGuinness"
 academic-year: "2026-27"
-last-updated: "2026-10-22"
+last-updated: "2026-11-19"
 doc-type: notes
 session: 1
 topic_code: MAT-01
@@ -82,7 +82,7 @@ The editor has four areas you use constantly:
 
 Every graph ends at the **main material node**, the large node labelled with the material's name. Its input pins (Base Color, Metallic, Roughness and so on) are where your results go. Changes do not reach the level until you click **Apply**, because Apply triggers the shader compile.
 
-Unreal 5.7 also includes **Substrate**, a newer material framework that replaces the fixed list of inputs and shading models with layered surface descriptions. These notes use the classic material inputs, because they are what most existing content, tutorials and documentation use, and because Substrate builds on the same PBR ideas. The demo project has Substrate turned off, so your main material node matches the screenshots. 
+Unreal 5.7 also includes **Substrate**, a newer material framework that replaces the fixed list of inputs and shading models with layered surface descriptions. These notes use the classic material inputs, because they are what most existing content, tutorials and documentation use, and because Substrate builds on the same PBR ideas. The demo project has Substrate turned off, so your main material node matches the one described here.
 
 ### 5.2 The PBR Model
 
@@ -129,6 +129,8 @@ When a texture has the **sRGB** checkbox ticked, the engine converts it from sRG
 
 If a roughness map is left as sRGB, a stored 0.5 arrives as about 0.21. Every surface using it turns glossier than the artist intended, with no error to warn you.
 
+Colours you type into a `Constant3Vector` or `VectorParameter` are already linear. A value of 0.5 in the node is about 188 on the 0-255 sRGB scale, not 128. Keep that in mind when you check a typed colour against the ranges in 5.3.
+
 ### 5.5 Texture Compression Settings
 
 Open any texture asset and the Details panel shows **Compression Settings**. This chooses the GPU format the texture is stored in, and it also decides how the engine reads the texture back. Use these four settings for nearly everything you import:
@@ -138,11 +140,9 @@ Open any texture asset and the Details panel shows **Compression Settings**. Thi
 | `Default (DXT1/5, BC1/3 on DX11)` | Base colour, emissive | On | General colour compression with optional alpha |
 | `Normalmap (DXT5, BC5 on DX11)` | Normal maps | Off | Stores only X and Y at high quality and rebuilds Z, and remaps 0-1 to -1 to 1 on sampling |
 | `Masks (no sRGB)` | ORM and other packed data | Off (forced) | Keeps each channel independent and linear |
-| `Grayscale (G8/16, RGB8 sRGB)` | Single-channel data such as a height map | Off for data | Stores one channel, so it costs less memory than RGB |
+| `Grayscale (G8/16, RGB8 sRGB)` | Single-channel data such as a height map or an opacity mask | Off for data | Stores one channel uncompressed, so edges in a mask stay clean. It uses more memory than `Default`, so keep it for maps where precision shows |
 
-<!-- VERIFY: Confirm the four Compression Settings labels match the UE 5.7 dropdown text exactly. -->
-
-The **Sampler Type** on a `Texture Sample` node must agree with the texture. Unreal sets it when you first assign a texture. If you later change the texture's settings, the node shows an error and the material refuses to compile until you set the matching sampler type (`Color`, `Normal`, `Masks`, `Linear Color` and so on).
+The **Sampler Type** on a `Texture Sample` node must agree with the texture. Unreal sets it when you first assign a texture. If you later change the texture's settings, the node shows an error and the material refuses to compile until you set the matching sampler type (`Color`, `Normal`, `Masks`, `Linear Grayscale` and so on).
 
 Follow this chart every time you import a texture. Each path ends at the compression setting, the sRGB setting and the sampler type that belong together.
 
@@ -157,7 +157,7 @@ flowchart TD
     q1 -->|Data| q2{Which kind of data?}
     q2 -->|Normal map| normal["<b>Normalmap</b><br/>sRGB off<br/>Sampler: Normal"]
     q2 -->|"Packed channels<br/>(ORM)"| masks["<b>Masks (no sRGB)</b><br/>sRGB off (forced)<br/>Sampler: Masks"]
-    q2 -->|"Single channel<br/>(height)"| grey["<b>Grayscale</b><br/>sRGB off<br/>Sampler: Linear Grayscale"]
+    q2 -->|"Single channel<br/>(height, opacity)"| grey["<b>Grayscale</b><br/>sRGB off<br/>Sampler: Linear Grayscale"]
 
     classDef startNode fill:#1e293b,stroke:#1e293b,color:#ffffff
     classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#1f2937
@@ -167,9 +167,9 @@ flowchart TD
     class colour,normal,masks,grey result
 ```
 
-<!-- VERIFY: Confirm a Grayscale texture with sRGB off takes the "Linear Grayscale" sampler type in UE 5.7. -->
-
 Unreal often recognises normal maps on import and sets Normalmap compression for you, but not always. Check every normal map by opening it, because a missed one is the most common material fault there is.
+
+Normal maps also come in two conventions that store the green channel the opposite way up. Unreal uses the **DirectX** convention. Many texture sites offer both, labelled `DX` and `GL`, so download the `DX` version. If you only have an OpenGL normal map, tick **Flip Green Channel** in the texture's Details panel, because otherwise every bump lights as a dent.
 
 ### 5.6 ORM Packing
 
@@ -189,7 +189,7 @@ Set an ORM texture to `Masks (no sRGB)`, because all three channels are data. In
 2. `TextureSample (T_Name_ORM).G -> Roughness`
 3. `TextureSample (T_Name_ORM).B -> Metallic`
 
-Some sources pack in a different order, for example ARM or MRA. Check the texture's documentation or open each channel in the Texture Editor before wiring, because a swapped channel turns roughness into metallic.
+Sources name packed textures differently. **ARM** (AO, roughness, metallic) is the same channel order as ORM under another name, so you wire it identically. **MRA** reverses the order, with metallic in R and AO in B. Check the texture's documentation or open each channel in the Texture Editor before wiring, because a swapped channel turns roughness into metallic.
 
 ### 5.7 Graph Basics
 
@@ -220,7 +220,7 @@ Right-click any node and choose **Start Previewing Node** to show that node's ou
 | Domain | Draws | Covered in |
 |:---|:---|:---|
 | `Surface` | Meshes. The default, and the domain for everything this week | Week 1 |
-| `Deferred Decal` | Projections onto other surfaces, such as stains | Week 3 |
+| `Deferred Decal` | Projections onto other surfaces, such as stains | Week 4 |
 | `Post Process` | Full-screen effects after the scene renders | Weeks 3 and 5 |
 | `User Interface` | UMG widgets | - |
 | `Light Function` | Patterns projected by a light | - |
@@ -261,14 +261,14 @@ flowchart TD
     accTitle: Choosing a blend mode and shading model
     accDescr: First choose the blend mode by asking whether you can see through the surface. If not, use Opaque. If only through hard-edged cut-outs, use Masked. If partly, with soft blending, use Translucent. Then choose the shading model by asking what light does in the real surface. If it only glows and ignores light, use Unlit. If light stops at the surface, use Default Lit. If light passes through a thin surface, use Two Sided Foliage. If light enters and scatters, use Subsurface. If there is a clear layer on top, use Clear Coat.
 
-    q1{"Step 1<br/>Can you see<br>through it?"}
-    q1 -->|No<br/>| opaque["<b>Opaque</b>"]
+    q1{"Step 1<br/>Can you see<br/>through it?"}
+    q1 -->|No| opaque["<b>Opaque</b>"]
     q1 -->|"Through hard-edged<br/>cut-outs only"| masked["<b>Masked</b>"]
     q1 -->|"Partly, with<br/>soft blending"| translucent["<b>Translucent</b>"]
-    opaque & masked & translucent --> q2{"Step 2<br/>What does<br>light do?"}
+    opaque & masked & translucent --> q2{"Step 2<br/>What does<br/>light do?"}
     q2 -->|"Ignored,<br/>surface glows"| unlit["<b>Unlit</b>"]
     q2 -->|"Stops at<br/>the surface"| lit["<b>Default Lit</b>"]
-    q2 -->|"Passes<br/>through<br/>a thin surface"| foliage["<b>Two-Sided<br>Foliage</b>"]
+    q2 -->|"Passes<br/>through<br/>a thin surface"| foliage["<b>Two Sided<br/>Foliage</b>"]
     q2 -->|"Enters and<br/>scatters"| sss["<b>Subsurface</b>"]
     q2 -->|"Reflects off a<br/>clear top layer"| coat["<b>Clear Coat</b>"]
 
@@ -291,77 +291,79 @@ flowchart TD
 | Panning | `TextureCoordinate -> Panner.Coordinate`, then set **Speed X** and **Speed Y** | Slides the texture continuously over time |
 | Rotation | `TextureCoordinate -> Rotator.Coordinate`, then set **Center X**, **Center Y** and **Speed** | Spins the texture around a centre point |
 
-`Panner` and `Rotator` read engine time internally, so you do not wire a `Time` node unless you want to control the time value yourself. For a fixed rotation instead of a spin, set **Speed** on `Rotator` to 1 and wire a `Constant` into its `Time` input. The rotator multiplies time by speed, so the constant becomes the angle. <!-- VERIFY: Confirm the Rotator angle is Time x Speed and whether the unit is radians, so Exercise 5 can state the value for 45 degrees. -->
+`Panner` and `Rotator` read engine time internally, so you do not wire a `Time` node unless you want to control the time value yourself. For a fixed rotation instead of a spin, set **Speed** on `Rotator` to 1 and wire a `Constant` into its `Time` input. The rotator multiplies time by speed and uses the result as an angle in radians, so the constant becomes the angle. A constant of 0.785 (pi / 4) rotates the texture by 45 degrees.
 
 ---
 
 ## 6. Worked Example
 
-This is the in-class demo. Open `DEMO_MAP_PATH` in the demo project and create a folder `/Game/Student/Week01` for your own assets, so you do not edit shared content.
+This is the in-class demo. Open `/Game/GD/Notes01/Demo/Levels/Lvl_Notes01` in the demo project. The finished demo materials are in `/Game/GD/Notes01/Demo/Materials`. To reproduce the demo yourself, create the folder `/Game/Student/Notes01/MyWork` and save your assets there, so you can compare your version with the finished one without overwriting it.
 
-Name assets with the standard prefixes and suffixes: `M_` for materials, `T_` for textures, and `_BC`, `_N` and `_ORM` for base colour, normal and ORM. Consistent names let you check a texture's type at a glance in the Content Browser.
+Name each material for the surface or effect it makes, using `MM_<Domain>_<Name>_<Usage>`, for example `MM_Prop_PaintedMetal_Opaque`. The middle field tells one material from another, so every material has its own name and they can all sit in one folder. The full scheme is in the [naming conventions](../supplementary/unreal-naming-conventions.md). Name textures with `T_` and the suffixes `_BC`, `_N`, `_ORM` and `_E` for base colour, normal, ORM and emissive. Consistent names let you check an asset's type at a glance in the Content Browser.
+
+The textures are in `/Game/GD/Shared/Textures`, one folder per set, and every demo and lab uses the same copies. They come from free **Fab** listings, apart from a few generated for this module; the README lists each source. The shared textures already have the right compression settings. Before you change a setting on one, copy it into your own folder with **Copy Here**, because every material that samples the shared texture would change too.
 
 ### 6.1 Part A - A Surface From a Texture Set (Session A)
 
-The texture set is in `TEXTURE_SET_PATH` and contains `T_..._BC`, `T_..._N` and `T_..._ORM`.
+You use the painted steel set in `/Game/GD/Shared/Textures/PaintedMetal`. The paint is worn through to bare metal in places, so the one material contains both a dielectric and a metal. It has three textures: `T_PaintedMetal_Albedo`, `T_PaintedMetal_Normal` and `T_PaintedMetal_ORM`. The ORM's B channel marks the bare-metal patches as metallic.
 
-**Step 1 - Check the textures.** Open each texture and set:
+**Step 1 - Check the textures.** Open each texture and confirm these settings:
 
 | Texture | Compression Settings | sRGB |
 |:---|:---|:---|
-| `_BC` | `Default (DXT1/5, BC1/3 on DX11)` | On |
-| `_N` | `Normalmap (DXT5, BC5 on DX11)` | Off |
-| `_ORM` | `Masks (no sRGB)` | Off |
+| `T_PaintedMetal_Albedo` | `Default (DXT1/5, BC1/3 on DX11)` | On |
+| `T_PaintedMetal_Normal` | `Normalmap (DXT5, BC5 on DX11)` | Off |
+| `T_PaintedMetal_ORM` | `Masks (no sRGB)` | Off |
 
 Save each texture after changing it.
 
-**Step 2 - Create the material.** Right-click in `/Game/Student/Week01` and choose **Material**. Name it `M_Week01_Surface` and open it.
+**Step 2 - Create the material.** Right-click in `/Game/Student/Notes01/MyWork` and choose **Material**. Name it `MM_Prop_PaintedMetal_Opaque` and open it.
 
 **Step 3 - Build the graph.** Drag all three textures from the Content Browser into the graph. Each becomes a `Texture Sample` node with the right sampler type. Wire:
 
-1. `TextureSample (_BC).RGB -> Base Color`
-2. `TextureSample (_N).RGB -> Normal`
-3. `TextureSample (_ORM).R -> Ambient Occlusion`
-4. `TextureSample (_ORM).G -> Roughness`
-5. `TextureSample (_ORM).B -> Metallic`
+1. `TextureSample (T_PaintedMetal_Albedo).RGB -> Base Color`
+2. `TextureSample (T_PaintedMetal_Normal).RGB -> Normal`
+3. `TextureSample (T_PaintedMetal_ORM).R -> Ambient Occlusion`
+4. `TextureSample (T_PaintedMetal_ORM).G -> Roughness`
+5. `TextureSample (T_PaintedMetal_ORM).B -> Metallic`
 
-Click **Apply**, then save. Drag the material onto a mesh in the level and rotate the directional light. The highlights move across the surface detail, which shows the normal map is working.
+Click **Apply**, then save. Drag the material onto a mesh in the level and rotate the directional light. The highlights move across the surface detail, which shows the normal map is working. The bare metal patches reflect the sky in their own colour, and the paint does not.
 
-**Step 4 - Break the normal map.** Open `_N`, set Compression Settings to `Default (DXT1/5, BC1/3 on DX11)`, tick sRGB and save. Return to the material:
+**Step 4 - Break the normal map.** Drag `T_PaintedMetal_Normal` onto `MyWork`, choose **Copy Here**, and point the normal `Texture Sample` at the copy, so the shared texture stays intact. Open the copy, set Compression Settings to `Default (DXT1/5, BC1/3 on DX11)`, tick sRGB and save. Return to the material:
 
 - The normal `Texture Sample` shows a sampler type error and the material does not compile.
 - Change its **Sampler Type** to `Color` and click Apply. The material now compiles, but the whole surface is lit as if tilted towards one corner, and the detail looks smeared.
 
 The cause is that `Color` sampling returns 0-1 values. A flat normal stored as (0.5, 0.5, 1) should arrive as (0, 0, 1), pointing straight out. Instead the remap to -1 to 1 never happens, and the sRGB conversion shrinks the mid values, so it arrives as about (0.21, 0.21, 1) and every pixel leans sideways. Restore the texture to `Normalmap` and the sampler type to `Normal`.
 
-**Step 5 - Break the ORM.** Open `_ORM`, set Compression Settings to `Default (DXT1/5, BC1/3 on DX11)`, tick sRGB and save. Fix the sampler type error by choosing `Color`, then apply.
+**Step 5 - Break the ORM.** Copy `T_PaintedMetal_ORM` into `MyWork` the same way and point the ORM `Texture Sample` at the copy. Open the copy, set Compression Settings to `Default (DXT1/5, BC1/3 on DX11)`, tick sRGB and save. Fix the sampler type error by choosing `Color`, then apply.
 
 The surface turns glossier and its crevices darker. The sRGB conversion pushes every mid value down, so a roughness of 0.5 arrives as about 0.21, and AO darkens in the same way. Nothing errors, which is why this fault ships. Restore `Masks (no sRGB)` and set the sampler type back to `Masks`.
 
-**Step 6 - Check with buffer views.** In the level viewport, open **View Mode > Buffer Visualization** and pick **Roughness**, then **Metallic**. Metals should show white in Metallic and non-metals black. Grey in the Metallic buffer means a channel is wired wrongly or the texture is set as sRGB. <!-- VERIFY: Confirm the UE 5.7 viewport menu path and labels for Buffer Visualization Roughness and Metallic. -->
+**Step 6 - Check with buffer views.** In the level viewport, open the view mode menu (labelled **Lit** by default) and choose **Buffer Visualization > Roughness**, then **Buffer Visualization > Metallic**. In Metallic, the bare metal patches should show white and the paint black. Grey in the Metallic buffer means a channel is wired wrongly or the texture is set as sRGB. Choose **Lit** again to return to the normal view.
 
 ### 6.2 Part B - Masked, Panning and Refractive Materials (Session B)
 
-**Step 7 - Masked foliage card.** Create `M_Week01_Foliage`. With nothing selected, set in Details:
+**Step 7 - Masked foliage card.** In `MyWork`, create `MM_Foliage_LeafCard_Masked`. With nothing selected, set in Details:
 
 - **Blend Mode:** `Masked`
 - **Shading Model:** `Two Sided Foliage`
 - **Two Sided:** ticked, so both faces of the card render
 
-Drag in the leaf texture from `FOLIAGE_TEXTURE_PATH`, which has the leaf shape in its alpha channel. Wire:
+Drag in `T_Leaf_Albedo` from `/Game/GD/Shared/Textures/Leaf`, a leaf base colour texture, which has the leaf shape in its alpha channel. Packing the shape into alpha saves a second texture, for the same reason ORM does. Wire:
 
-1. `TextureSample (leaf).RGB -> Base Color`
-2. `TextureSample (leaf).A -> Opacity Mask`
+1. `TextureSample (T_Leaf_Albedo).RGB -> Base Color`
+2. `TextureSample (T_Leaf_Albedo).A -> Opacity Mask`
 3. `Constant3Vector` (a mid green, about 0.3, 0.5, 0.1) `-> Subsurface Color`
 4. `Constant` (0.6) `-> Roughness`
 
 Apply it to a plane in the level and put a light behind the plane. The leaf edges are hard, the background shows through the cut-outs, and the leaf glows green where light passes through. Raise **Opacity Mask Clip Value** and watch the leaf edges eat inwards.
 
-**Step 8 - Panning emissive surface.** Create `M_Week01_Emissive`. Wire:
+**Step 8 - Panning emissive surface.** In `MyWork`, create `MM_Prop_PanningLightStrip_Opaque`. Wire:
 
 1. `TextureCoordinate` with **U Tiling** 4 and **V Tiling** 1 `-> Panner.Coordinate`
 2. On `Panner`, set **Speed X** to 0.2 and **Speed Y** to 0
-3. `Panner -> TextureSample (EMISSIVE_TEXTURE_PATH).UVs`
+3. `Panner -> TextureSample (T_LightStrip_Emission).UVs`
 4. `TextureSample.RGB -> Multiply.A`
 5. `ScalarParameter` named `EmissiveStrength`, default 10, `-> Multiply.B`
 6. `Multiply -> Emissive Color`
@@ -369,11 +371,11 @@ Apply it to a plane in the level and put a light behind the plane. The leaf edge
 
 Apply it to a long mesh. The pattern scrolls along it and glows. Raise `EmissiveStrength` above 1 and bright areas bloom, because emissive values above 1 are brighter than white. Swap `Panner` for `Rotator` to show the same texture spinning instead.
 
-**Step 9 - Refractive glass.** Create `M_Week01_Glass`. Set in Details:
+**Step 9 - Refractive glass.** In `MyWork`, create `MM_Prop_RefractiveGlass_Trans`. Set in Details:
 
 - **Blend Mode:** `Translucent`
-- **Lighting Mode:** `Surface ForwardShading`, so the glass gets sharp specular highlights rather than the soft volume lighting translucency uses by default <!-- VERIFY: Confirm the UE 5.7 Lighting Mode label "Surface ForwardShading" and that it is under the Translucency category. -->
-- **Refraction Method:** `Index Of Refraction` <!-- VERIFY: Confirm the UE 5.7 property label "Refraction Method" and its option text "Index Of Refraction". -->
+- **Lighting Mode** (under **Translucency**): `Surface ForwardShading`, so the glass gets sharp specular highlights rather than the soft volume lighting translucency uses by default
+- **Refraction Method** (under **Refraction**): `Index Of Refraction`
 
 Wire:
 
@@ -382,7 +384,7 @@ Wire:
 3. `Constant` (0.1) `-> Opacity`
 4. `Constant` (1.5) `-> Refraction`
 
-Apply it to a sphere in front of a detailed background. The background bends through the sphere and flips near the edges, as it does through a real glass ball. Set `Refraction` to 1.0 and the bending disappears, because an index of 1.0 is air. Index Of Refraction mode suits small curved objects like this. It gives artefacts on large flat surfaces such as windows and water, which you meet again in Week 5.
+Apply it to a sphere in front of a detailed background. The background bends through the sphere and flips near the edges, as it does through a real glass ball. Set `Refraction` to 1.0 and the bending disappears, because an index of 1.0 is air. Index Of Refraction mode suits small curved objects like this. It gives artefacts on large flat surfaces such as windows and water, which you meet again in Week 6.
 
 ---
 
@@ -391,6 +393,7 @@ Apply it to a sphere in front of a detailed background. The background bends thr
 | Pitfall | Symptom | Fix |
 |:---|:---|:---|
 | Normal map not set to Normalmap compression | Whole surface lit as if tilted, detail smeared, or a sampler type error | Set `Normalmap (DXT5, BC5 on DX11)`, untick sRGB, set Sampler Type to `Normal` |
+| OpenGL normal map used in Unreal | Bumps look like dents and the light seems to come from below | Use the `DX` version of the map, or tick **Flip Green Channel** on the texture |
 | ORM or mask texture left as sRGB | Surface too glossy, crevices too dark, no error | Set `Masks (no sRGB)`, set Sampler Type to `Masks` |
 | ORM channels swapped | Rough areas look metallic, or metal looks matte | Check the source's channel order and rewire R, G and B |
 | Sampler type error after changing a texture | Red error on the `Texture Sample`, material will not compile | Set the node's Sampler Type to match the texture's new settings |
@@ -407,7 +410,7 @@ Apply it to a sphere in front of a detailed background. The background bends thr
 
 1. Take any CC0 texture set with separate AO, roughness and metallic maps. Describe which channel of an ORM texture each map goes to, and the compression and sRGB settings for every texture in the set. Give a reason for each setting.
 2. A roughness texture stores 0.5 in every pixel. State the roughness the material receives with sRGB on and with sRGB off, and describe how the two surfaces differ under a single light.
-3. Build a material with no textures that looks like brushed gold, then change only roughness and metallic to make it look like yellow plastic. Record the values you used.
+3. Build a material with no textures that looks like polished gold, then change only roughness and metallic to make it look like yellow plastic. Record the values you used.
 4. For each of these surfaces, choose a blend mode and a shading model and give a reason: a chain-link fence, a candle, a car body, a neon sign, a frosted shower screen.
 5. Build a material that tiles a texture 8 times across and 2 times down, and rotates it by a fixed 45 degrees without spinning.
 
@@ -427,8 +430,8 @@ Apply it to a sphere in front of a detailed background. The background bends thr
 - **Lab 1** (`lab_1_pbr_surface_materials`) applies Session A. You build a dielectric, a metal and a roughness variant, each matched to a reference photo.
 - **Lab 2** (`lab_2_blend_modes_and_shading_models`) applies Session B. You build one material per blend mode and one using a non-default shading model.
 - **Week 2** turns this week's separate materials into one master material with parameters and switches, and adds material functions and layered blending.
-- **Week 3** uses the `Deferred Decal` and `Post Process` domains, and measures the cost differences between blend modes that this week only described.
-- **Week 5** returns to refraction and Fresnel to build water, where Index Of Refraction mode no longer suits the surface.
+- **Week 4** uses the `Deferred Decal` and `Post Process` domains, and measures the cost differences between blend modes that this week only described.
+- **Week 6** returns to refraction and Fresnel to build water, where Index Of Refraction mode no longer suits the surface.
 
 ---
 
@@ -453,6 +456,3 @@ Apply it to a sphere in front of a detailed background. The background bends thr
 | **sRGB** | A non-linear colour encoding used by monitors and image files |
 | **Substrate** | Unreal's newer material framework, built from layered surface descriptions |
 | **UVs** | 2D coordinates on a mesh that place a texture |
-
----
-

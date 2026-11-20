@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Texture Filtering: From Texels to Anisotropy</title>
+<style>
+/* ---------- Theme: neutral, with light and dark variants ---------- */
+:root {
+  --bg: #f6f6f4;
+  --fg: #1c1d20;
+  --muted: #55575e;
+  --panel: #ffffff;
+  --line: #d4d5d9;
+  --accent: #0a5fbf;
+  --focus: #c26a00;
+  --code: #eceef2;
+  --sky: #c9d6e3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --fg: #e7e7ea;
+    --muted: #a4a6ae;
+    --panel: #1c1e22;
+    --line: #34373d;
+    --accent: #72b2ff;
+    --focus: #f3b04a;
+    --code: #262930;
+    --sky: #3a4552;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 17px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.55;
+}
+.page { max-width: 1320px; margin: 0 auto; padding: 24px 20px 48px; }
+h1 { font-size: 1.9rem; margin: 0 0 6px; }
+h2 { font-size: 1.35rem; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin: 22px 0 6px; }
+p, li { max-width: 78ch; }
+.lead { color: var(--muted); margin-top: 0; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 4px; font-size: 0.95rem; }
+th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+.framing { font-size: 1.15rem; font-weight: 600; border-left: 4px solid var(--accent); padding: 6px 0 6px 14px; }
+
+/* ---------- Demo layout: canvas beside controls on wide screens ---------- */
+.demo { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+@media (max-width: 1000px) { .demo { grid-template-columns: 1fr; } }
+.stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+#view { display: block; width: 100%; height: 56vh; min-height: 320px; cursor: crosshair; }
+#view:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.probe { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 2px #000; pointer-events: none; }
+.inset { position: absolute; top: 10px; right: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px; font-size: 0.78rem; }
+.inset canvas { display: block; width: 224px; height: 224px; image-rendering: pixelated; }
+.inset p { margin: 4px 0 0; max-width: 224px; color: var(--muted); }
+@media (max-width: 640px) { .inset canvas { width: 150px; height: 150px; } .inset p { max-width: 150px; } }
+.fallback { padding: 40px 24px; font-size: 1.05rem; }
+.readout { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 10px; font-size: 0.95rem; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; font-variant-numeric: tabular-nums; }
+.controls { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.controls fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 12px; padding: 8px 10px 10px; }
+.controls legend { font-weight: 600; padding: 0 4px; }
+.controls label { display: block; margin: 4px 0; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row input[type=range] { flex: 1; }
+select, input[type=range] { width: 100%; font: inherit; }
+select { padding: 4px; }
+input, select, button { accent-color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 2px 0 0; }
+.legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; list-style: none; padding: 0; margin: 6px 0 0; }
+.legend li { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.swatch { width: 18px; height: 18px; border: 1px solid #000; border-radius: 3px; display: inline-block; flex: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+.disabled { opacity: 0.55; }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header>
+  <h1>Texture Filtering: From Texels to Anisotropy</h1>
+  <p class="lead">An interactive guide to how the GPU turns a UV coordinate into a colour, and why that choice decides whether distant surfaces shimmer, blur or stay crisp.</p>
+</header>
+
+<section aria-labelledby="h-framing">
+  <h2 id="h-framing">1. Framing Question</h2>
+  <p class="framing">Why does a texture that looks sharp up close shimmer or blur in the distance?</p>
+  <p>Up close, many screen pixels share one texel, and the question is how to fill the gaps between texels. In the distance, one screen pixel covers many texels, and the question becomes which of them to show. The two problems need different answers, and the sampler settings you choose in Unreal decide which answer you get.</p>
+</section>
+
+<section aria-labelledby="h-learn">
+  <h2 id="h-learn">2. What You Will Learn</h2>
+  <table>
+    <thead><tr><th scope="col">Outcome</th><th scope="col">Assessment verb</th></tr></thead>
+    <tbody>
+      <tr><td>How a sampler turns a UV into a colour with nearest, bilinear and trilinear filtering</td><td>Explain</td></tr>
+      <tr><td>Why distant textures shimmer, and how mipmaps stop it</td><td>Explain</td></tr>
+      <tr><td>The visual quality and sampling cost of the five filter modes</td><td>Compare</td></tr>
+      <tr><td>Shimmering, mip bands and glancing-angle blur, from their symptoms</td><td>Diagnose</td></tr>
+      <tr><td>Why a texture computed in the shader needs manual band-limiting</td><td>Explain</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h-demo">
+  <h2 id="h-demo">3. Interactive Demo</h2>
+  <p>Move the pointer over the ground, or click the view and use the arrow keys, to inspect the texels under the probe. Hold <strong>Shift</strong> with an arrow key for single-pixel steps.</p>
+
+  <div class="demo">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="view" tabindex="0" aria-label="3D view of a textured ground plane. Use the arrow keys to move the inspection probe." aria-describedby="readout"></canvas>
+        <div class="probe" id="probe" aria-hidden="true"></div>
+        <div class="inset" id="inset">
+          <canvas id="insetCanvas" width="224" height="224" aria-label="Magnified texels around the probe, with the sample point and bilinear weights"></canvas>
+          <p id="insetCaption">Texel inspector</p>
+        </div>
+      </div>
+      <dl class="readout" id="readout">
+        <dt>Filter</dt><dd id="rFilter">-</dd>
+        <dt>Source</dt><dd id="rSource">-</dd>
+        <dt>Mip level under probe</dt><dd id="rLevel">-</dd>
+        <dt>Footprint and anisotropy</dt><dd id="rAniso">-</dd>
+        <dt>Texel reads per pixel</dt><dd id="rSamples">-</dd>
+        <dt>Bilinear weights</dt><dd id="rWeights">-</dd>
+      </dl>
+      <p class="sr-only" id="live" aria-live="polite" aria-atomic="true"></p>
+    </div>
+
+    <form class="controls" id="controls" onsubmit="return false">
+      <fieldset>
+        <legend>Texture source</legend>
+        <label><input type="radio" name="source" value="checker" checked> Checkerboard</label>
+        <label><input type="radio" name="source" value="text"> Text and grid</label>
+        <label><input type="radio" name="source" value="noise"> High-frequency noise</label>
+        <label><input type="radio" name="source" value="procedural"> Procedural in shader (no texture)</label>
+        <label id="bandLabel"><input type="checkbox" id="bandLimit"> Band-limit the procedural pattern</label>
+        <p class="hint">Band-limiting averages the pattern over each pixel's footprint using screen-space derivatives.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Filtering</legend>
+        <label for="filter">Filter mode</label>
+        <select id="filter">
+          <option value="nearest">Nearest (no mips)</option>
+          <option value="bilinear">Bilinear (no mips)</option>
+          <option value="nearestMip">Bilinear, nearest mip</option>
+          <option value="trilinear" selected>Trilinear</option>
+          <option value="aniso">Anisotropic</option>
+        </select>
+        <label for="aniso">Maximum anisotropy: <span id="anisoValue">8x</span></label>
+        <input type="range" id="aniso" min="1" max="16" step="1" value="8">
+        <p class="hint" id="anisoHint">Applies to the Anisotropic mode.</p>
+        <label><input type="checkbox" id="showMips"> Tint mip levels</label>
+        <ul class="legend" id="legend" aria-label="Mip level colours"></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>Camera</legend>
+        <label for="height">Height: <span id="heightValue">2.0</span> m</label>
+        <input type="range" id="height" min="0.5" max="20" step="0.1" value="2">
+        <label for="pitch">Pitch down: <span id="pitchValue">12</span> degrees</label>
+        <input type="range" id="pitch" min="2" max="60" step="1" value="12">
+        <label><input type="checkbox" id="animate"> Animate (slow dolly)</label>
+        <label><input type="checkbox" id="showQuad"> Show close-up quad</label>
+      </fieldset>
+    </form>
+  </div>
+</section>
+
+<section aria-labelledby="h-core">
+  <h2 id="h-core">4. Core Ideas</h2>
+
+  <h3>4.1 Texels and the pixel footprint</h3>
+  <p>A texture is a grid of <strong>texels</strong>. The GPU shades screen pixels, not texels, so every pixel asks the sampler for the colour at one UV coordinate. Project the pixel's square back onto the texture and you get its <strong>footprint</strong>: the patch of texels that pixel really covers. Every filtering choice is an attempt to summarise that footprint with as few texel reads as possible.</p>
+
+  <h3>4.2 Magnification and minification</h3>
+  <p>When the footprint is smaller than one texel, the texture is being <strong>magnified</strong>: many pixels share one texel, and the sampler must invent values between texels. When the footprint covers many texels, the texture is being <strong>minified</strong>: one pixel must stand for many texels, and reading just one of them throws the rest away. Sharpness up close is a magnification question. Shimmer in the distance is a minification question.</p>
+
+  <h3>4.3 Nearest-neighbour filtering</h3>
+  <p><strong>Nearest</strong> filtering returns the single texel whose centre is closest to the UV. It costs one read. Magnified, it shows hard-edged blocks, which suits pixel art. Minified, it picks an essentially arbitrary texel from the footprint, and as the camera moves that choice changes from frame to frame, so the surface sparkles and crawls. That flicker is <strong>aliasing</strong>.</p>
+
+  <h3>4.4 Bilinear filtering</h3>
+  <p><strong>Bilinear</strong> filtering reads the four texels around the UV and blends them by distance. The weights are the products of the fractional offsets, so they always sum to 1. It makes magnified textures smooth instead of blocky. It does not fix minification, because four texels are still far too few to stand for a footprint that covers hundreds.</p>
+
+  <h3>4.5 Mipmaps</h3>
+  <p>A <strong>mip chain</strong> stores the texture again at half size, then quarter size, down to one texel, each level averaged from the one above. The sampler measures the footprint with screen-space derivatives and picks the level where one texel is about the size of one pixel. The averaging was done in advance, so a distant pixel reads a texel that already summarises its whole footprint. The cost is one third more memory.</p>
+
+  <h3>4.6 Trilinear filtering</h3>
+  <p>Choosing a single mip level per pixel leaves visible lines across a floor where the level changes. <strong>Trilinear</strong> filtering does a bilinear read in the two nearest levels and blends between them by the fractional level, so the change is gradual. That is eight texel reads per pixel. Turn on the mip tint in the demo and compare "Bilinear, nearest mip" with "Trilinear" to see the bands appear and disappear.</p>
+
+  <h3>4.7 Anisotropic filtering</h3>
+  <p>At a glancing angle the footprint is a long, thin shape: narrow across the view, stretched along it. Trilinear filtering has to pick one level for that shape, and it picks by the longer axis, so it blurs the surface in both directions to avoid aliasing in one. <strong>Anisotropic</strong> filtering takes several trilinear reads along the long axis at a sharper level, so the floor stays crisp. The cost grows with the number of reads, up to eight texel reads per tap times the anisotropy setting.</p>
+
+  <h3>4.8 Procedural textures have no mip chain</h3>
+  <p>A pattern computed in the shader, such as the checkerboard from <code>floor</code> and <code>frac</code>, is evaluated once at the pixel centre. There is no pre-averaged level to fall back on, so it aliases exactly like a nearest-filtered texture with no mips, however good the sampler settings are. The fix must be written by hand: measure the footprint with derivatives (<code>fwidth</code>, or <code>ddx</code> and <code>ddy</code>) and either average the pattern over it or fade detail towards its average colour. The demo's band-limit option integrates the checkerboard over the footprint exactly. The other fix is to bake the pattern into a texture, which gives it a real mip chain.</p>
+</section>
+
+<section aria-labelledby="h-pitfalls">
+  <h2 id="h-pitfalls">5. Common Pitfalls</h2>
+  <table>
+    <thead><tr><th scope="col">Symptom</th><th scope="col">Cause</th><th scope="col">Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Distant surfaces shimmer or sparkle as the camera moves</td><td>Minification with no usable mip chain: mips disabled, nearest or bilinear without mips, or a procedural pattern</td><td>Generate mips and use trilinear filtering. For procedural patterns, band-limit with derivatives or bake to a texture</td></tr>
+      <tr><td>Hard lines across a floor at fixed distances</td><td>Nearest-mip selection jumps between levels</td><td>Use trilinear filtering so levels blend</td></tr>
+      <tr><td>Floors and roads blur at glancing angles</td><td>One mip level chosen for a stretched footprint</td><td>Use anisotropic filtering and check the anisotropy limit</td></tr>
+      <tr><td>Colour bleeds across tiles of an atlas, or seams appear at a distance</td><td>Bilinear reads and mip averaging cross tile borders</td><td>Add padding around tiles, limit the number of mips, or use separate textures or texture arrays</td></tr>
+      <tr><td>A thin line runs along a UV seam, such as where a polar or lat-long coordinate wraps</td><td>The UV jumps, so the derivatives spike and the sampler picks the smallest mip</td><td>Sample with explicit derivatives taken from unbroken UVs</td></tr>
+      <tr><td>Pixel art looks soft</td><td>Bilinear magnification blends neighbouring pixels</td><td>Use nearest filtering and no mips for that texture</td></tr>
+      <tr><td>Fine lines vanish in the distance</td><td>Mip averaging dissolves features thinner than a texel</td><td>Use a sharpening mip generation setting, or make the features thicker in the source art</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h-unreal">
+  <h2 id="h-unreal">6. Unreal Parallels</h2>
+  <table>
+    <thead><tr><th scope="col">Idea in the demo</th><th scope="col">Where it lives in Unreal</th><th scope="col">Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Filter mode per texture</td><td>The texture asset's <strong>Filter</strong> setting in its Details panel: Default (from Texture Group), Nearest, Bi-linear or Tri-linear</td><td>Lets one texture, such as pixel art, override the project-wide default</td></tr>
+      <tr><td>Mip chain</td><td>The texture's <strong>Mip Gen Settings</strong> under Level Of Detail: options include No Mipmaps, Simple Average, Sharpen and Blur</td><td>No Mipmaps brings back distant shimmer. Sharpen keeps fine detail in smaller levels</td></tr>
+      <tr><td>Project-wide defaults</td><td>The texture's <strong>Texture Group</strong>, such as World or 2D Pixels (unfiltered). Each group's filtering is set in the device profiles</td><td>Changing a group changes every texture in it, per platform</td></tr>
+      <tr><td>Which sampler a material uses</td><td><strong>Sampler Source</strong> on a Texture Sample node: From texture asset, or a shared wrap or clamp sampler</td><td>Shared samplers use the World group's filtering and free up sampler slots, which are limited per material</td></tr>
+      <tr><td>Choosing the mip yourself</td><td><strong>Mip Value Mode</strong> on a Texture Sample node: a fixed level, a bias, or explicit derivatives</td><td>The node-graph equivalent of <code>Texture2DSampleLevel</code> and <code>Texture2DSampleGrad</code>, used for seams and loops</td></tr>
+      <tr><td>Anisotropy limit</td><td>The console variable <code>r.MaxAnisotropy</code>, which the texture scalability settings also set</td><td>Raising it sharpens glancing angles and costs texel reads</td></tr>
+      <tr><td>Expensive layered or procedural materials</td><td><strong>Runtime Virtual Textures</strong>, which render a material into cached, mipmapped pages</td><td>A heavy landscape blend becomes one filtered texture read</td></tr>
+      <tr><td>Giving a procedural pattern a mip chain</td><td>Draw the material into a <strong>Render Target</strong>, then create a static texture from it</td><td>The baked texture gets real mips, so it filters like any other texture</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="h-ex">
+  <h2 id="h-ex">7. Exercises</h2>
+  <ol>
+    <li><strong>See the shimmer.</strong> Choose the Checkerboard and Nearest (no mips), and turn on Animate. Describe what happens near the horizon. Switch to Trilinear and note how the readout's texel reads per pixel change.</li>
+    <li><strong>Find the bands.</strong> Turn on Tint mip levels. Compare Bilinear, nearest mip with Trilinear, and write down the level numbers where the colour changes. Move the probe across a band and record the bilinear weights on each side.</li>
+    <li><strong>Glancing angles.</strong> Set Pitch down to 3 degrees and choose the Text and grid source. Compare Trilinear with Anisotropic at 2x, 8x and 16x. For each, record the anisotropy ratio and the texel reads at the probe, and say which setting you would ship on a mid-range GPU and why.</li>
+    <li><strong>Stretch: fix a procedural pattern.</strong> Choose Procedural in shader and turn on Animate. Explain why changing the filter mode makes no difference. Turn on band-limiting, then use the mip tint to read the estimated level, and explain how the derivative-based fix does the job a mip chain would do.</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h-reflect">
+  <h2 id="h-reflect">8. Reflective Questions</h2>
+  <p>These are for discussion with your peers and are not graded.</p>
+  <ol>
+    <li>Mipmaps cost a third more memory and trilinear filtering doubles the texel reads. When would you accept shimmer to save either?</li>
+    <li>Anisotropic filtering is often the first setting lowered on weaker hardware. Which kinds of game would suffer most from that, and why?</li>
+    <li>A procedural material can be band-limited by hand or baked to a texture. What does each approach cost, and which would you choose for a large terrain?</li>
+    <li>Texture atlases save draw calls but fight with filtering. How would you decide whether an atlas is worth it for a set of props?</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h-gloss">
+  <h2 id="h-gloss">9. Glossary</h2>
+  <table>
+    <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Aliasing</strong></td><td>Shimmer, crawling or moire caused by sampling a pattern less often than its detail changes</td></tr>
+      <tr><td><strong>Anisotropic filtering</strong></td><td>Several trilinear reads along the long axis of a stretched footprint, to keep glancing surfaces sharp</td></tr>
+      <tr><td><strong>Band-limiting</strong></td><td>Removing detail finer than a pixel can show, before sampling, so it cannot alias</td></tr>
+      <tr><td><strong>Bilinear filtering</strong></td><td>A distance-weighted blend of the four texels around the UV</td></tr>
+      <tr><td><strong>Derivatives</strong></td><td>How fast a value changes from one pixel to the next, read with <code>ddx</code>, <code>ddy</code> or <code>fwidth</code>. The GPU uses them to measure the footprint</td></tr>
+      <tr><td><strong>Footprint</strong></td><td>The area of the texture that one screen pixel covers</td></tr>
+      <tr><td><strong>Magnification</strong></td><td>When one texel covers several pixels, as close up</td></tr>
+      <tr><td><strong>Minification</strong></td><td>When one pixel covers several texels, as in the distance</td></tr>
+      <tr><td><strong>Mip chain</strong></td><td>A texture stored at a series of halving sizes, each averaged from the one above</td></tr>
+      <tr><td><strong>Mip level</strong></td><td>One size in the mip chain. Level 0 is full size</td></tr>
+      <tr><td><strong>Nearest filtering</strong></td><td>Returning the single closest texel, with no blending</td></tr>
+      <tr><td><strong>Sampler</strong></td><td>The GPU state that decides how a texture is read: filtering, mip use, anisotropy and wrapping</td></tr>
+      <tr><td><strong>Texel</strong></td><td>One element of a texture, the texture's equivalent of a pixel</td></tr>
+      <tr><td><strong>Texture atlas</strong></td><td>Several images packed into one texture, each in its own region</td></tr>
+      <tr><td><strong>Trilinear filtering</strong></td><td>Bilinear reads in the two nearest mip levels, blended by the fractional level</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<script>
+/*
+  Texture filtering demo.
+  Structure: Textures (generate patterns and mip chains on the CPU), Maths (small matrix helpers),
+  Renderer (WebGL2 programs, samplers, geometry), Probe (CPU ray-plane maths for the inspector),
+  UI (controls, readouts) and a render loop that only runs continuously while animating.
+*/
+(() => {
+  'use strict';
+
+  // ---------- Constants ----------
+  const TEX_SIZE = 256;                 // Base texture size; gives 9 mip levels (256 down to 1)
+  const LEVELS = Math.log2(TEX_SIZE) + 1;
+  const CELLS = 16;                     // Checker cells per texture repeat; the procedural pattern uses the same count
+  const TILE = 2.0;                     // World units per texture repeat on the ground
+  const PLANE_HALF = 500;               // Ground plane half-size in world units
+  const FOV = 60 * Math.PI / 180;
+  const NEAR = 0.05, FAR = 2000;
+  const DOLLY_SPEED = 2.5;              // World units per second while animating
+  // Okabe-Ito colour-blind-safe palette, one colour per mip level, plus white for the last level.
+  const PALETTE = [[230, 159, 0], [86, 180, 233], [0, 158, 115], [240, 228, 66], [0, 114, 178],
+                   [213, 94, 0], [204, 121, 167], [153, 153, 153], [255, 255, 255]];
+  const MODES = {
+    nearest:    { label: 'Nearest (no mips)',     mips: false, taps: 1 },
+    bilinear:   { label: 'Bilinear (no mips)',    mips: false, taps: 4 },
+    nearestMip: { label: 'Bilinear, nearest mip', mips: true,  taps: 4 },
+    trilinear:  { label: 'Trilinear',             mips: true,  taps: 8 },
+    aniso:      { label: 'Anisotropic',           mips: true,  taps: 8 }
+  };
+  const SOURCE_LABELS = { checker: 'Checkerboard', text: 'Text and grid', noise: 'High-frequency noise', procedural: 'Procedural in shader' };
+
+  // ---------- Textures: generated in code, so the file needs no image assets ----------
+  const Textures = {
+    // A tiny deterministic random generator, so the noise texture is identical on every load.
+    rng(seed) {
+      return () => {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    },
+    checker(size) {
+      const d = new Uint8ClampedArray(size * size * 4), cell = size / CELLS;
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        // Same parity rule as the procedural shader pattern, so the two can be compared directly.
+        const odd = ((Math.floor(x / cell) + Math.floor(y / cell)) & 1) === 1;
+        const v = odd ? 230 : 26, i = (y * size + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+      }
+      return d;
+    },
+    text(size) {
+      // Draw with the 2D canvas API, then read the pixels back.
+      const c = document.createElement('canvas'); c.width = c.height = size;
+      const g = c.getContext('2d');
+      g.fillStyle = '#ebe5d6'; g.fillRect(0, 0, size, size);
+      g.strokeStyle = '#a9a291'; g.lineWidth = 1;
+      for (let p = 0; p <= size; p += 8) { g.beginPath(); g.moveTo(p + 0.5, 0); g.lineTo(p + 0.5, size); g.moveTo(0, p + 0.5); g.lineTo(size, p + 0.5); g.stroke(); }
+      g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
+      for (let p = 0; p <= size; p += 32) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, size); g.moveTo(0, p); g.lineTo(size, p); g.stroke(); }
+      g.fillStyle = '#1b3f7a'; g.font = 'bold 20px Arial, Helvetica, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      const letters = 'ABCDEFGH';
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) g.fillText(letters[x] + (y + 1), x * 32 + 16, y * 32 + 17);
+      return g.getImageData(0, 0, size, size).data;
+    },
+    noise(size) {
+      const d = new Uint8ClampedArray(size * size * 4), r = Textures.rng(1234);
+      for (let i = 0; i < size * size; i++) {
+        // Independent random texels: the highest frequency a texture can hold, so it aliases most.
+        const v = r(), sparkle = r() > 0.97 ? 1 : 0;
+        d[i * 4] = sparkle ? 255 : 40 + v * 170;
+        d[i * 4 + 1] = sparkle ? 255 : 70 + v * 150;
+        d[i * 4 + 2] = sparkle ? 255 : 60 + v * 90;
+        d[i * 4 + 3] = 255;
+      }
+      return d;
+    },
+    // Box-filter each level down from the one above: the classic mip chain.
+    buildMips(base, size) {
+      const levels = [{ size, data: base }];
+      while (size > 1) {
+        const src = levels[levels.length - 1].data, half = size / 2, dst = new Uint8ClampedArray(half * half * 4);
+        for (let y = 0; y < half; y++) for (let x = 0; x < half; x++) for (let c = 0; c < 4; c++) {
+          const a = ((2 * y) * size + 2 * x) * 4 + c, b = a + size * 4;
+          dst[(y * half + x) * 4 + c] = (src[a] + src[a + 4] + src[b] + src[b + 4] + 2) >> 2;
+        }
+        levels.push({ size: half, data: dst }); size = half;
+      }
+      return levels;
+    },
+    // A matching chain where each level is one palette colour, labelled with its level number while there is room.
+    tintMips() {
+      const levels = [];
+      for (let L = 0; L < LEVELS; L++) {
+        const size = TEX_SIZE >> L, c = document.createElement('canvas'); c.width = c.height = size;
+        const g = c.getContext('2d'), col = PALETTE[L];
+        g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; g.fillRect(0, 0, size, size);
+        if (size >= 32) {
+          const dark = (col[0] * 0.3 + col[1] * 0.59 + col[2] * 0.11) > 140;
+          g.fillStyle = dark ? '#000' : '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.font = `bold ${Math.round(size / 4)}px Arial, Helvetica, sans-serif`;
+          const step = size / 2;
+          for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) g.fillText(String(L), x * step + step / 2, y * step + step / 2);
+        }
+        levels.push({ size, data: g.getImageData(0, 0, size, size).data });
+      }
+      return levels;
+    }
+  };
+
+  // ---------- Maths: column-major 4x4 matrices, as WebGL expects ----------
+  const M = {
+    perspective(fovy, aspect, n, f) {
+      const t = 1 / Math.tan(fovy / 2), nf = 1 / (n - f);
+      return new Float32Array([t / aspect, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) * nf, -1, 0, 0, 2 * f * n * nf, 0]);
+    },
+    lookAt(e, c, up) {
+      let z = M.norm([e[0] - c[0], e[1] - c[1], e[2] - c[2]]);
+      const x = M.norm(M.cross(up, z)), y = M.cross(z, x);
+      return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0,
+        -M.dot(x, e), -M.dot(y, e), -M.dot(z, e), 1]);
+    },
+    mul(a, b) {
+      const o = new Float32Array(16);
+      for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+        let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s;
+      }
+      return o;
+    },
+    // Translate, then rotate about Y, then scale uniformly: enough for the close-up quad.
+    model(t, angle, s) {
+      const c = Math.cos(angle) * s, n = Math.sin(angle) * s;
+      return new Float32Array([c, 0, -n, 0, 0, s, 0, 0, n, 0, c, 0, t[0], t[1], t[2], 1]);
+    },
+    identity() { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); },
+    cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; },
+    dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; },
+    norm(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+  };
+
+  // ---------- Shaders ----------
+  const VERTEX_SHADER = `#version 300 es
+  layout(location = 0) in vec3 aPos;
+  layout(location = 1) in vec2 aUV;
+  uniform mat4 uViewProj;
+  uniform mat4 uModel;
+  uniform vec2 uUVScale;
+  uniform vec2 uUVOffset;
+  out vec2 vUV;
+  void main() {
+    // Scrolling the UVs instead of moving the camera keeps the dolly endless.
+    vUV = aUV * uUVScale + uUVOffset;
+    gl_Position = uViewProj * uModel * vec4(aPos, 1.0);
+  }`;
+
+  const FRAGMENT_SHADER = `#version 300 es
+  precision highp float;
+  in vec2 vUV;
+  uniform sampler2D uTex;      // The chosen texture, with its mip chain
+  uniform sampler2D uTint;     // Same size and mip count, one palette colour per level
+  uniform bool uProcedural;    // Compute the pattern here instead of reading a texture
+  uniform bool uBandLimit;     // Average the procedural pattern over the pixel footprint
+  uniform bool uShowMips;
+  uniform float uCells;
+  uniform float uTexSize;
+  uniform vec3 uPalette[9];
+  out vec4 outColor;
+
+  const vec3 DARK = vec3(26.0 / 255.0);
+  const vec3 LIGHT = vec3(230.0 / 255.0);
+
+  // Point-sampled checker: evaluated once at the pixel centre, so it aliases in the distance.
+  float checkerPoint(vec2 p) {
+    vec2 c = floor(p);
+    return mod(c.x + c.y, 2.0);
+  }
+
+  // Box-filtered checker: integrates the pattern over the pixel's footprint, measured with derivatives.
+  // Each axis becomes the average of a square wave over the footprint width, then the axes are combined.
+  float checkerFiltered(vec2 p) {
+    vec2 w = max(abs(dFdx(p)), abs(dFdy(p))) + 1e-4;
+    vec2 i = 2.0 * (abs(fract((p - 0.5 * w) * 0.5) - 0.5) - abs(fract((p + 0.5 * w) * 0.5) - 0.5)) / w;
+    return 0.5 - 0.5 * i.x * i.y;
+  }
+
+  // Estimated mip level from derivatives, the same measure the sampler uses for isotropic filtering.
+  float estimatedLevel(vec2 uv) {
+    vec2 dx = dFdx(uv * uTexSize), dy = dFdy(uv * uTexSize);
+    return 0.5 * log2(max(dot(dx, dx), dot(dy, dy)));
+  }
+
+  void main() {
+    vec3 col;
+    vec3 tint;
+    if (uProcedural) {
+      vec2 p = vUV * uCells;
+      float c = uBandLimit ? checkerFiltered(p) : checkerPoint(p);
+      col = mix(DARK, LIGHT, c);
+      // There is no mip chain, so the tint shows the level a texture would have needed here.
+      int L = int(clamp(floor(estimatedLevel(vUV) + 0.5), 0.0, 8.0));
+      tint = uPalette[L];
+    } else {
+      col = texture(uTex, vUV).rgb;
+      // Read through the same sampler, so the tint shows the level (or blend) the GPU really chose.
+      tint = texture(uTint, vUV).rgb;
+    }
+    if (uShowMips) col = mix(col, tint, 0.6);
+    outColor = vec4(col, 1.0);
+  }`;
+
+  // ---------- Renderer ----------
+  function createRenderer(canvas) {
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) return null;
+
+    function compile(type, src) {
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERTEX_SHADER));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAGMENT_SHADER));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    const u = {};
+    ['uViewProj', 'uModel', 'uUVScale', 'uUVOffset', 'uTex', 'uTint', 'uProcedural', 'uBandLimit', 'uShowMips',
+     'uCells', 'uTexSize', 'uPalette'].forEach(n => { u[n] = gl.getUniformLocation(prog, n); });
+
+    // Geometry: an indexed quad buffer with position and UV per vertex.
+    function makeQuad(verts) {
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+      const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
+      const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      return vao;
+    }
+    const S = PLANE_HALF;
+    // Ground UVs are world X and Z; uUVScale turns them into texture repeats.
+    const ground = makeQuad([-S, 0, -S, -S, -S,  S, 0, -S, S, -S,  S, 0, S, S, S,  -S, 0, S, -S, S]);
+    const quad = makeQuad([-0.5, -0.5, 0, 0, 1,  0.5, -0.5, 0, 1, 1,  0.5, 0.5, 0, 1, 0,  -0.5, 0.5, 0, 0, 0]);
+
+    function uploadChain(levels) {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      levels.forEach((lv, i) => gl.texImage2D(gl.TEXTURE_2D, i, gl.RGBA8, lv.size, lv.size, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array(lv.data.buffer, lv.data.byteOffset, lv.data.byteLength)));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, levels.length - 1);
+      return t;
+    }
+
+    // Anisotropic filtering is an extension; the demo works without it and disables that mode.
+    const anisoExt = gl.getExtension('EXT_texture_filter_anisotropic');
+    const maxAniso = anisoExt ? Math.max(1, Math.floor(gl.getParameter(anisoExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT))) : 1;
+
+    // One sampler object per mode: switching filter is just rebinding a sampler, as in a real engine.
+    function sampler(min, mag) {
+      const s = gl.createSampler();
+      gl.samplerParameteri(s, gl.TEXTURE_MIN_FILTER, min);
+      gl.samplerParameteri(s, gl.TEXTURE_MAG_FILTER, mag);
+      gl.samplerParameteri(s, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.samplerParameteri(s, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      return s;
+    }
+    const samplers = {
+      nearest: sampler(gl.NEAREST, gl.NEAREST),
+      bilinear: sampler(gl.LINEAR, gl.LINEAR),
+      nearestMip: sampler(gl.LINEAR_MIPMAP_NEAREST, gl.LINEAR),
+      trilinear: sampler(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR),
+      aniso: sampler(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR)
+    };
+    function setAnisotropy(n) {
+      if (anisoExt) gl.samplerParameterf(samplers.aniso, anisoExt.TEXTURE_MAX_ANISOTROPY_EXT, n);
+    }
+
+    gl.useProgram(prog);
+    gl.uniform1i(u.uTex, 0); gl.uniform1i(u.uTint, 1);
+    gl.uniform1f(u.uCells, CELLS); gl.uniform1f(u.uTexSize, TEX_SIZE);
+    gl.uniform3fv(u.uPalette, new Float32Array(PALETTE.flat().map(v => v / 255)));
+    gl.enable(gl.DEPTH_TEST);
+
+    function draw(state, cam, textures) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      const sky = state.sky;
+      gl.clearColor(sky[0], sky[1], sky[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(prog);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textures.base);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, textures.tint);
+      const s = samplers[state.mode];
+      gl.bindSampler(0, s); gl.bindSampler(1, s);
+      gl.uniformMatrix4fv(u.uViewProj, false, cam.viewProj);
+      gl.uniform1i(u.uProcedural, state.source === 'procedural' ? 1 : 0);
+      gl.uniform1i(u.uBandLimit, state.bandLimit ? 1 : 0);
+      gl.uniform1i(u.uShowMips, state.showMips ? 1 : 0);
+
+      gl.uniformMatrix4fv(u.uModel, false, M.identity());
+      gl.uniform2f(u.uUVScale, 1 / TILE, 1 / TILE);
+      gl.uniform2f(u.uUVOffset, 0, state.offset);
+      gl.bindVertexArray(ground); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+      if (state.showQuad) {
+        // The quad shows a quarter of the texture across about a third of the view: strong magnification.
+        gl.uniformMatrix4fv(u.uModel, false, cam.quadModel);
+        gl.uniform2f(u.uUVScale, 0.25, 0.25);
+        gl.uniform2f(u.uUVOffset, 0, 0);
+        gl.bindVertexArray(quad); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+      }
+      gl.bindVertexArray(null);
+    }
+
+    return { gl, uploadChain, setAnisotropy, anisoSupported: !!anisoExt, maxAniso, draw };
+  }
+
+  // ---------- Camera ----------
+  function buildCamera(state, aspect) {
+    const p = state.pitch * Math.PI / 180;
+    const eye = [0, state.height, 0];
+    const fwd = [0, -Math.sin(p), -Math.cos(p)];
+    const view = M.lookAt(eye, [eye[0] + fwd[0], eye[1] + fwd[1], eye[2] + fwd[2]], [0, 1, 0]);
+    const viewProj = M.mul(M.perspective(FOV, aspect, NEAR, FAR), view);
+    const right = [1, 0, 0], up = M.cross(right, fwd);
+    // Place the close-up quad 2.5 m ahead and slightly right, facing the camera before it rotates.
+    const centre = [eye[0] + fwd[0] * 2.5 + 0.9, eye[1] + fwd[1] * 2.5, eye[2] + fwd[2] * 2.5];
+    const quadModel = M.model(centre, state.quadAngle, 1.3);
+    return { eye, fwd, right, up, viewProj, quadModel, aspect };
+  }
+
+  // ---------- Probe: the same ray-plane maths as the GPU, done on the CPU for the inspector ----------
+  const Probe = {
+    // UV on the ground under a point given in CSS pixels, or null for sky or beyond the plane.
+    uvAt(cam, state, px, py, w, h) {
+      const tanH = Math.tan(FOV / 2);
+      const nx = (px / w) * 2 - 1, ny = 1 - (py / h) * 2;
+      const d = [cam.fwd[0] + cam.right[0] * nx * tanH * cam.aspect + cam.up[0] * ny * tanH,
+                 cam.fwd[1] + cam.right[1] * nx * tanH * cam.aspect + cam.up[1] * ny * tanH,
+                 cam.fwd[2] + cam.right[2] * nx * tanH * cam.aspect + cam.up[2] * ny * tanH];
+      if (d[1] > -1e-6) return null;
+      const t = -cam.eye[1] / d[1];
+      const x = cam.eye[0] + d[0] * t, z = cam.eye[2] + d[2] * t;
+      if (Math.abs(x) > PLANE_HALF || Math.abs(z) > PLANE_HALF) return null;
+      return [x / TILE, z / TILE + state.offset];
+    },
+    // Footprint in texels per device pixel, the derived mip level, and the anisotropic tap count.
+    analyse(cam, state, px, py, w, h, dpr, maxAniso) {
+      const uv = Probe.uvAt(cam, state, px, py, w, h);
+      if (!uv) return null;
+      const ux = Probe.uvAt(cam, state, px + 1 / dpr, py, w, h), uy = Probe.uvAt(cam, state, px, py + 1 / dpr, w, h);
+      if (!ux || !uy) return null;
+      const dx = [(ux[0] - uv[0]) * TEX_SIZE, (ux[1] - uv[1]) * TEX_SIZE];
+      const dy = [(uy[0] - uv[0]) * TEX_SIZE, (uy[1] - uv[1]) * TEX_SIZE];
+      const lx = Math.hypot(dx[0], dx[1]), ly = Math.hypot(dy[0], dy[1]);
+      const major = Math.max(lx, ly), minor = Math.max(Math.min(lx, ly), 1e-6);
+      const ratio = major / minor;
+      const taps = Math.max(1, Math.min(Math.ceil(ratio), state.mode === 'aniso' ? state.aniso : 1, maxAniso));
+      return { uv, major, ratio, lodIso: Math.log2(major), lodAniso: Math.log2(major / taps), taps };
+    },
+    // Which level or levels the current mode reads, and how many texel reads that costs.
+    levelInfo(state, a) {
+      const mode = MODES[state.mode];
+      if (state.source === 'procedural') {
+        const est = Math.min(Math.max(a.lodIso, 0), LEVELS - 1);
+        return { show: 0, text: `None: no mip chain. A texture would need level ${est.toFixed(1)}`, reads: 0 };
+      }
+      if (!mode.mips) {
+        const mag = a.lodIso < 0;
+        return { show: 0, text: `0 only (no mips); ${mag ? 'magnifying' : 'minifying by ' + Math.pow(2, a.lodIso).toFixed(1) + 'x'}`, reads: mode.taps };
+      }
+      const lod = state.mode === 'aniso' ? a.lodAniso : a.lodIso;
+      const c = Math.min(Math.max(lod, 0), LEVELS - 1);
+      if (state.mode === 'nearestMip') {
+        const L = Math.round(c);
+        return { show: L, text: `${L} (computed ${lod.toFixed(2)}, snapped to the nearest level)`, reads: 4 };
+      }
+      const lo = Math.floor(c), hi = Math.min(lo + 1, LEVELS - 1), f = c - lo;
+      const blend = lod <= 0 ? `${lo} (magnifying, level 0 only)` : `${lo} and ${hi}, blended ${(f * 100).toFixed(0)}% towards ${hi}`;
+      const perTap = lod <= 0 ? 4 : 8;
+      return { show: f < 0.5 ? lo : hi, text: blend, reads: perTap * (state.mode === 'aniso' ? a.taps : 1) };
+    }
+  };
+
+  // ---------- Inspector: draws the texels around the probe from the CPU copy of the mip chain ----------
+  function drawInspector(ctx, state, chains, a, info) {
+    const W = ctx.canvas.width, N = 8, cell = W / N;
+    const css = getComputedStyle(document.documentElement);
+    ctx.clearRect(0, 0, W, W);
+    ctx.fillStyle = css.getPropertyValue('--panel').trim(); ctx.fillRect(0, 0, W, W);
+    ctx.font = '12px Arial, Helvetica, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (!a) {
+      ctx.fillStyle = css.getPropertyValue('--fg').trim(); ctx.fillText('Probe is over the sky', W / 2, W / 2);
+      return { caption: 'Move the probe onto the ground.', weights: '-' };
+    }
+    if (state.source === 'procedural') {
+      ctx.fillStyle = css.getPropertyValue('--fg').trim();
+      ctx.fillText('No texels here:', W / 2, W / 2 - 10); ctx.fillText('the pattern is computed per pixel', W / 2, W / 2 + 10);
+      return { caption: 'Procedural pattern: evaluated at the pixel centre, no texture read.', weights: 'Not applicable' };
+    }
+    const lv = chains[state.source][info.show], size = lv.size;
+    const wrap = v => ((v % size) + size) % size;
+    // Texel space: texel centres sit at integer + 0.5, so subtract 0.5 before splitting into whole and fraction.
+    const t = [a.uv[0] * size - 0.5, a.uv[1] * size - 0.5];
+    const i0 = [Math.floor(t[0]), Math.floor(t[1])], f = [t[0] - i0[0], t[1] - i0[1]];
+    const ox = i0[0] - 3, oy = i0[1] - 3;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const k = (wrap(oy + y) * size + wrap(ox + x)) * 4;
+      ctx.fillStyle = `rgb(${lv.data[k]},${lv.data[k + 1]},${lv.data[k + 2]})`;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+    ctx.strokeStyle = 'rgba(128,128,128,0.6)'; ctx.lineWidth = 1;
+    for (let p = 0; p <= N; p++) { ctx.beginPath(); ctx.moveTo(p * cell + 0.5, 0); ctx.lineTo(p * cell + 0.5, W); ctx.moveTo(0, p * cell + 0.5); ctx.lineTo(W, p * cell + 0.5); ctx.stroke(); }
+
+    let weights, labels;
+    if (state.mode === 'nearest') {
+      // Nearest picks the texel containing the UV.
+      const nx = Math.floor(a.uv[0] * size) - ox, ny = Math.floor(a.uv[1] * size) - oy;
+      labels = [[nx, ny, 1]];
+      weights = 'Nearest: one texel, weight 1.00';
+    } else {
+      const w00 = (1 - f[0]) * (1 - f[1]), w10 = f[0] * (1 - f[1]), w01 = (1 - f[0]) * f[1], w11 = f[0] * f[1];
+      labels = [[3, 3, w00], [4, 3, w10], [3, 4, w01], [4, 4, w11]];
+      weights = `top-left ${w00.toFixed(2)}, top-right ${w10.toFixed(2)}, bottom-left ${w01.toFixed(2)}, bottom-right ${w11.toFixed(2)}`;
+    }
+    labels.forEach(([x, y, w]) => {
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(x * cell + 3, y * cell + cell / 2 - 8, cell - 6, 16);
+      ctx.fillStyle = '#fff'; ctx.fillText(w.toFixed(2), x * cell + cell / 2, y * cell + cell / 2);
+    });
+    // The sample point, in the same texel space.
+    const sx = (t[0] + 0.5 - ox) * cell, sy = (t[1] + 0.5 - oy) * cell;
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy); ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8); ctx.stroke();
+    ctx.strokeStyle = '#ff2fd0'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy); ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8); ctx.stroke();
+    return { caption: `Level ${info.show} (${size} x ${size}). The cross is the sample point; outlined texels are the ones read.`, weights };
+  }
+
+  // ---------- UI and main loop ----------
+  function main() {
+    const canvas = document.getElementById('view');
+    const $ = id => document.getElementById(id);
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const state = {
+      source: 'checker', mode: 'trilinear', aniso: 8, showMips: false, bandLimit: false,
+      height: 2, pitch: 12, animate: !reduceMotion, showQuad: false,
+      offset: 0, quadAngle: 0.45, probe: null, sky: [0.79, 0.84, 0.89]
+    };
+    $('animate').checked = state.animate;
+
+    // Mip legend: colour and number, so the levels never depend on colour alone.
+    PALETTE.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="swatch" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>Level ${i} (${TEX_SIZE >> i}px)`;
+      $('legend').appendChild(li);
+    });
+
+    let renderer;
+    try { renderer = createRenderer(canvas); } catch (e) { renderer = null; console.error(e); }
+    if (!renderer) {
+      $('stage').innerHTML = '<p class="fallback">This demo needs WebGL2, which this browser could not provide. Try an up-to-date Chrome, Edge or Firefox, and check that hardware acceleration is turned on in the browser settings. The notes below still explain every idea.</p>';
+      $('controls').querySelectorAll('input, select').forEach(el => { el.disabled = true; });
+      return;
+    }
+
+    // Generate every source and its mip chain once.
+    const chains = {
+      checker: Textures.buildMips(Textures.checker(TEX_SIZE), TEX_SIZE),
+      text: Textures.buildMips(Textures.text(TEX_SIZE), TEX_SIZE),
+      noise: Textures.buildMips(Textures.noise(TEX_SIZE), TEX_SIZE)
+    };
+    const gpu = {
+      checker: renderer.uploadChain(chains.checker),
+      text: renderer.uploadChain(chains.text),
+      noise: renderer.uploadChain(chains.noise),
+      tint: renderer.uploadChain(Textures.tintMips())
+    };
+
+    // Anisotropy: clamp the slider to what the GPU supports, or disable the mode.
+    if (renderer.anisoSupported) {
+      $('aniso').max = String(renderer.maxAniso);
+      state.aniso = Math.min(state.aniso, renderer.maxAniso);
+      $('aniso').value = String(state.aniso);
+      renderer.setAnisotropy(state.aniso);
+    } else {
+      $('filter').querySelector('option[value=aniso]').disabled = true;
+      $('aniso').disabled = true;
+      $('anisoHint').textContent = 'Anisotropic filtering is not supported by this browser or GPU.';
+    }
+
+    const inset = $('insetCanvas').getContext('2d');
+    let dirty = true, last = performance.now(), liveTimer = 0, lastLive = '';
+
+    function readSky() {
+      // Use the theme's sky colour so the horizon matches light and dark mode.
+      const probe = document.createElement('div'); probe.style.color = getComputedStyle(document.documentElement).getPropertyValue('--sky').trim();
+      document.body.appendChild(probe);
+      const m = getComputedStyle(probe).color.match(/\d+/g).map(Number); probe.remove();
+      state.sky = [m[0] / 255, m[1] / 255, m[2] / 255];
+    }
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), r = canvas.getBoundingClientRect();
+      const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; dirty = true; }
+      if (!state.probe) state.probe = [r.width / 2, r.height * 0.55];
+      return { dpr, w: r.width, h: r.height };
+    }
+
+    function syncControls() {
+      const proc = state.source === 'procedural';
+      $('bandLimit').disabled = !proc; $('bandLabel').classList.toggle('disabled', !proc);
+      $('aniso').disabled = !renderer.anisoSupported || state.mode !== 'aniso';
+      $('anisoValue').textContent = state.aniso + 'x';
+      $('heightValue').textContent = state.height.toFixed(1);
+      $('pitchValue').textContent = String(state.pitch);
+    }
+
+    function updateReadouts(cam, size) {
+      const a = Probe.analyse(cam, state, state.probe[0], state.probe[1], size.w, size.h, size.dpr, renderer.maxAniso);
+      const mode = MODES[state.mode];
+      $('rFilter').textContent = state.mode === 'aniso' ? `${mode.label}, up to ${state.aniso}x` : mode.label;
+      $('rSource').textContent = SOURCE_LABELS[state.source];
+      const probeEl = $('probe'); probeEl.style.left = state.probe[0] + 'px'; probeEl.style.top = state.probe[1] + 'px';
+      let live;
+      if (!a) {
+        $('rLevel').textContent = 'Probe is not over the ground';
+        $('rAniso').textContent = '-'; $('rSamples').textContent = '-'; $('rWeights').textContent = '-';
+        const ins = drawInspector(inset, state, chains, null, null); $('insetCaption').textContent = ins.caption;
+        live = `${mode.label}. Probe is not over the ground.`;
+      } else {
+        const info = Probe.levelInfo(state, a);
+        $('rLevel').textContent = info.text;
+        const fp = `${a.major.toFixed(2)} texels per pixel along the long axis, ratio ${a.ratio.toFixed(1)}:1`;
+        $('rAniso').textContent = state.mode === 'aniso' ? `${fp}; ${a.taps} tap${a.taps > 1 ? 's' : ''} used` : fp;
+        const worst = state.mode === 'aniso' ? 8 * state.aniso : mode.taps;
+        $('rSamples').textContent = state.source === 'procedural'
+          ? 'None: the pattern is computed, not read'
+          : `${info.reads} here (worst case ${worst})`;
+        const ins = drawInspector(inset, state, chains, a, info);
+        $('insetCaption').textContent = ins.caption; $('rWeights').textContent = ins.weights;
+        live = `${mode.label}. Mip level ${info.text}. ${$('rSamples').textContent} texel reads per pixel.`;
+      }
+      // Announce changes politely and not every frame, so screen readers are not flooded.
+      if (live !== lastLive) {
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(() => { $('live').textContent = live; lastLive = live; }, 700);
+      }
+    }
+
+    function frame(now) {
+      const dt = Math.min((now - last) / 1000, 0.1); last = now;
+      if (state.animate) {
+        // Moving forward means the ground scrolls towards the camera.
+        state.offset -= DOLLY_SPEED * dt / TILE;
+        // Every texture repeats once per UV unit, so wrapping keeps UVs small and precise during long runs.
+        state.offset -= Math.floor(state.offset);
+        state.quadAngle += dt * 0.6;
+        dirty = true;
+      }
+      const size = resize();
+      if (dirty) {
+        const cam = buildCamera(state, canvas.width / canvas.height);
+        renderer.draw(state, cam, { base: gpu[state.source === 'procedural' ? 'checker' : state.source], tint: gpu.tint });
+        updateReadouts(cam, size);
+        dirty = false;
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // ---------- Event wiring ----------
+    const invalidate = () => { syncControls(); dirty = true; };
+    document.querySelectorAll('input[name=source]').forEach(r => r.addEventListener('change', e => { state.source = e.target.value; invalidate(); }));
+    $('filter').addEventListener('change', e => { state.mode = e.target.value; invalidate(); });
+    $('aniso').addEventListener('input', e => { state.aniso = Number(e.target.value); renderer.setAnisotropy(state.aniso); invalidate(); });
+    $('showMips').addEventListener('change', e => { state.showMips = e.target.checked; invalidate(); });
+    $('bandLimit').addEventListener('change', e => { state.bandLimit = e.target.checked; invalidate(); });
+    $('height').addEventListener('input', e => { state.height = Number(e.target.value); invalidate(); });
+    $('pitch').addEventListener('input', e => { state.pitch = Number(e.target.value); invalidate(); });
+    $('animate').addEventListener('change', e => { state.animate = e.target.checked; invalidate(); });
+    $('showQuad').addEventListener('change', e => { state.showQuad = e.target.checked; invalidate(); });
+
+    canvas.addEventListener('pointermove', e => {
+      const r = canvas.getBoundingClientRect(); state.probe = [e.clientX - r.left, e.clientY - r.top]; dirty = true;
+    });
+    canvas.addEventListener('keydown', e => {
+      const step = e.shiftKey ? 1 : 12, r = canvas.getBoundingClientRect();
+      const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      const m = moves[e.key]; if (!m) return;
+      e.preventDefault();
+      state.probe = [Math.min(Math.max(state.probe[0] + m[0], 0), r.width - 1), Math.min(Math.max(state.probe[1] + m[1], 0), r.height - 1)];
+      dirty = true;
+    });
+    window.addEventListener('resize', () => { dirty = true; });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readSky(); dirty = true; });
+
+    readSky();
+    syncControls();
+    requestAnimationFrame(frame);
+  }
+
+  main();
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.8",
+	"EngineAssociation": "{88D72EA2-407E-12FC-6262-A2B3FF51C291}",
 	"Category": "",
 	"Description": "",
 	"Plugins": [
@@ -13,6 +13,18 @@
 		},
 		{
 			"Name": "GameplayStateTree",
+			"Enabled": true
+		},
+		{
+			"Name": "ModelContextProtocol",
+			"Enabled": true
+		},
+		{
+			"Name": "AllToolsets",
+			"Enabled": true
+		},
+		{
+			"Name": "Terminal",
 			"Enabled": true
 		}
 	]
