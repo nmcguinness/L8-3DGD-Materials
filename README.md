@@ -7,13 +7,13 @@ stage: 4
 institution: "DkIT"
 author: "Niall McGuinness"
 academic-year: "2026-27"
-last-updated: "2026-11-04"
+last-updated: "2026-11-27"
 engine_version: "UE 5.7"
 ---
 
-# Materials in Unreal Engine 5.8 
+# Materials in Unreal Engine 5.7
 
-A two-block set of notes on building materials in Unreal Engine. Block A (Nr 1 - 5) covers node-based materials in the Material Editor. Block B (Nr 6-7) covers writing HLSL in Custom nodes and external shader files.
+A two-block set of notes on building materials in Unreal Engine. Block A (weeks 1 to 7) covers node-based materials in the Material Editor. Block B (weeks 8 and 9) covers writing HLSL in Custom nodes and external shader files.
 
 ---
 
@@ -110,5 +110,3 @@ Thirteen short labs in `labs/HLSL/` build HLSL skills in small steps, each addin
 2. Check the lab's Debugging and Pitfalls table and the notes' Common Pitfalls table. They cover the failures seen most often.
 3. Post on the Moodle forum. Include a screenshot of the graph and of the result, so others can reproduce the problem.
 4. Report errors in the notes or labs on the Moodle forum, naming the file and section.
-
----
